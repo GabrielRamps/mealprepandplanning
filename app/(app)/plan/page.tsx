@@ -1,21 +1,15 @@
-import { CalendarDays } from "lucide-react";
 import type { Metadata } from "next";
-import { EmptyState, PageHeader } from "@/components/page-header";
+import { redirect } from "next/navigation";
+import { ThisWeekRedirect } from "@/components/this-week-redirect";
 import { requireHousehold } from "@/lib/household";
+import { waitingForUser } from "@/lib/plan/plans";
 
 export const metadata: Metadata = { title: "Plan" };
 
+/** A week waiting for my answer comes first; otherwise this week on the phone's calendar. */
 export default async function PlanPage() {
-  await requireHousehold();
-
-  return (
-    <>
-      <PageHeader title="Plan" />
-      <main className="mx-auto w-full max-w-2xl flex-1">
-        <EmptyState icon={<CalendarDays className="size-7" />} title="Weekly plan">
-          Plan breakfast, lunch, dinner and snacks for the week, then send it to your partner to approve.
-        </EmptyState>
-      </main>
-    </>
-  );
+  const { user, membership } = await requireHousehold();
+  const waiting = await waitingForUser(membership.householdId, user.id);
+  if (waiting.weekStart) redirect(`/plan/${waiting.weekStart}`);
+  return <ThisWeekRedirect />;
 }

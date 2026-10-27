@@ -2,10 +2,12 @@
 
 import { Check, ChevronRight, EllipsisVertical, Printer, RotateCcw, Trash2 } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import {
   addManualItemAction,
   deleteItemAction,
+  rebuildListAction,
   setListStatusAction,
   toggleItemAction,
   updateItemAction,
@@ -36,13 +38,14 @@ type Props = {
   listId: string;
   name: string;
   status: "active" | "completed";
+  planChanged: boolean;
   initialItems: ListItem[];
   aisleOrder: Aisle[];
   memberNames: Record<string, string>;
 };
 
 /** E2/E3: aisle groups, check-off shared between phones by polling, manual items, sources. */
-export function ShoppingList({ listId, name, status, initialItems, aisleOrder, memberNames }: Props) {
+export function ShoppingList({ listId, name, status, planChanged, initialItems, aisleOrder, memberNames }: Props) {
   const [items, setItems] = useState(initialItems);
   const [openId, setOpenId] = useState<string | null>(null);
   const [, startTransition] = useTransition();
@@ -140,6 +143,8 @@ export function ShoppingList({ listId, name, status, initialItems, aisleOrder, m
           {checkedCount} of {items.length} checked
         </p>
 
+        {planChanged ? <PlanChangedBanner listId={listId} /> : null}
+
         <AddItem listId={listId} onAdded={apply} />
 
         {items.length === 0 ? <p className="py-6 text-center text-muted-foreground">Nothing on this list yet.</p> : null}
@@ -207,6 +212,33 @@ export function ShoppingList({ listId, name, status, initialItems, aisleOrder, m
         }}
       />
     </>
+  );
+}
+
+/** PRD 8.4: the plan behind this list changed since it was made. */
+function PlanChangedBanner({ listId }: { listId: string }) {
+  const router = useRouter();
+  const [error, setError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+  return (
+    <div role="status" className="flex flex-col gap-2 rounded-xl bg-amber-500/10 p-3 text-sm">
+      <p>
+        <strong>Plan changed.</strong> Update the list? Checked items and items you added stay.
+      </p>
+      <Button
+        disabled={pending}
+        onClick={() =>
+          startTransition(async () => {
+            const result = await rebuildListAction(listId);
+            if (result.error) setError(result.error);
+            else router.refresh();
+          })
+        }
+      >
+        {pending ? "Updating…" : "Update list"}
+      </Button>
+      {error ? <p className="text-destructive">{error}</p> : null}
+    </div>
   );
 }
 

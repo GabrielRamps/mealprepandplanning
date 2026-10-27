@@ -1,5 +1,5 @@
 import "server-only";
-import { and, asc, desc, eq, gt, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, isNull, notInArray, sql } from "drizzle-orm";
 import { atomic, getDb, schema } from "@/lib/db";
 import type { Aisle } from "@/lib/enums";
 import { guessAisle } from "@/lib/grocery/aisles";
@@ -97,28 +97,40 @@ async function recipesForBuild(householdId: string, recipeIds: string[]): Promis
 
 export class ListBuildError extends Error {}
 
+type Pick = { recipeId: string; servings: number };
+
+/** Build requests for picks; a missing recipe either fails or is skipped (plans keep deleted recipes). */
+async function requestsFor(householdId: string, picks: Pick[], skipMissing: boolean): Promise<BuildRequest[]> {
+  const found = await recipesForBuild(
+    householdId,
+    picks.map((p) => p.recipeId),
+  );
+  const requests: BuildRequest[] = [];
+  for (const p of picks) {
+    const recipe = found.get(p.recipeId);
+    if (recipe) requests.push({ recipe, servings: p.servings });
+    else if (!skipMissing) throw new ListBuildError("One of those recipes is no longer in your library.");
+  }
+  return requests;
+}
+
+function sumPicks(picks: Pick[]): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const p of picks) out.set(p.recipeId, (out.get(p.recipeId) ?? 0) + p.servings);
+  return out;
+}
+
 /** createListFromRecipes / createListFromPlan (PRD 9.2): build, then save list, sources and items together. */
 export async function createList(input: {
   householdId: string;
   userId: string;
   name: string;
-  picks: { recipeId: string; servings: number }[];
+  picks: Pick[];
   mealPlanId?: string | null;
 }): Promise<string> {
-  const found = await recipesForBuild(
-    input.householdId,
-    input.picks.map((p) => p.recipeId),
-  );
-  const requests: BuildRequest[] = [];
-  for (const p of input.picks) {
-    const recipe = found.get(p.recipeId);
-    if (!recipe) throw new ListBuildError("One of those recipes is no longer in your library.");
-    requests.push({ recipe, servings: p.servings });
-  }
+  const requests = await requestsFor(input.householdId, input.picks, Boolean(input.mealPlanId));
   const items = buildList(requests);
-
-  const servingsByRecipe = new Map<string, number>();
-  for (const p of input.picks) servingsByRecipe.set(p.recipeId, (servingsByRecipe.get(p.recipeId) ?? 0) + p.servings);
+  const servingsByRecipe = sumPicks(requests.map((r) => ({ recipeId: r.recipe.id, servings: r.servings })));
 
   const listId = crypto.randomUUID();
   await atomic((q) => [
@@ -333,4 +345,78 @@ export async function setListStatus(householdId: string, listId: string, status:
     .update(groceryLists)
     .set({ status, completedAt: status === "completed" ? new Date() : null })
     .where(and(eq(groceryLists.id, listId), eq(groceryLists.householdId, householdId)));
+}
+
+// ---------------------------------------------------------------------------
+// Updating a list after its plan changed (PRD 8.4)
+
+/** True when the plan's recipes or servings differ from what the list was built from. */
+export async function listOutOfDate(listId: string, picks: Pick[]): Promise<boolean> {
+  const rows = await getDb()
+    .select({ recipeId: groceryListRecipes.recipeId, servings: groceryListRecipes.servings })
+    .from(groceryListRecipes)
+    .where(eq(groceryListRecipes.listId, listId));
+  const want = sumPicks(picks);
+  if (want.size !== rows.length) return true;
+  return rows.some((r) => Math.abs((want.get(r.recipeId) ?? -1) - r.servings) > 1e-6);
+}
+
+/**
+ * Rebuilds the recipe items: keeps is_checked for every merge_key that's
+ * still needed, keeps manual items, removes recipe items no longer needed.
+ */
+export async function rebuildList(householdId: string, listId: string, picks: Pick[]): Promise<void> {
+  const requests = await requestsFor(householdId, picks, true);
+  const built = buildList(requests);
+  const current = await getDb()
+    .select({ id: groceryItems.id, mergeKey: groceryItems.mergeKey })
+    .from(groceryItems)
+    .where(and(eq(groceryItems.listId, listId), eq(groceryItems.isManual, false)));
+  const existing = new Map(current.filter((i) => i.mergeKey).map((i) => [i.mergeKey!, i.id]));
+  const keep = built.map((b) => b.mergeKey);
+  const servings = sumPicks(requests.map((r) => ({ recipeId: r.recipe.id, servings: r.servings })));
+  const now = new Date();
+
+  await atomic((q) => [
+    q
+      .delete(groceryItems)
+      .where(
+        and(
+          eq(groceryItems.listId, listId),
+          eq(groceryItems.isManual, false),
+          keep.length ? sql`(${groceryItems.mergeKey} is null or ${notInArray(groceryItems.mergeKey, keep)})` : undefined,
+        ),
+      ),
+    ...built
+      .filter((b) => existing.has(b.mergeKey))
+      .map((b) =>
+        q
+          .update(groceryItems)
+          .set({ name: b.name, quantity: b.quantity, unit: b.unit, aisle: b.aisle, isPantry: b.isPantry, sources: b.sources, updatedAt: now })
+          .where(and(eq(groceryItems.id, existing.get(b.mergeKey)!), eq(groceryItems.listId, listId))),
+      ),
+    ...(built.some((b) => !existing.has(b.mergeKey))
+      ? [
+          q.insert(groceryItems).values(
+            built
+              .filter((b) => !existing.has(b.mergeKey))
+              .map((b) => ({
+                listId,
+                ingredientId: b.ingredientId,
+                mergeKey: b.mergeKey,
+                name: b.name,
+                quantity: b.quantity,
+                unit: b.unit,
+                aisle: b.aisle,
+                isPantry: b.isPantry,
+                sources: b.sources,
+              })),
+          ),
+        ]
+      : []),
+    q.delete(groceryListRecipes).where(eq(groceryListRecipes.listId, listId)),
+    ...(servings.size
+      ? [q.insert(groceryListRecipes).values([...servings].map(([recipeId, s]) => ({ listId, recipeId, servings: s })))]
+      : []),
+  ]);
 }

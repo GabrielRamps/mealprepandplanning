@@ -232,6 +232,19 @@ export async function getRecipe(householdId: string, recipeId: string): Promise<
   };
 }
 
+/** An active (not disliked, archived or deleted) recipe in this household: what planners may pick (D1). */
+export async function activeRecipe(householdId: string, recipeId: string): Promise<{ servings: number } | null> {
+  if (!isUuid(recipeId)) return null;
+  const [row] = await getDb()
+    .select({ servings: recipes.servings })
+    .from(recipes)
+    .where(
+      and(eq(recipes.id, recipeId), eq(recipes.householdId, householdId), isNull(recipes.deletedAt), eq(recipes.status, "active")),
+    )
+    .limit(1);
+  return row ?? null;
+}
+
 /** True if the recipe exists, isn't deleted, and belongs to this household. */
 export async function recipeInHousehold(householdId: string, recipeId: string): Promise<boolean> {
   if (!isUuid(recipeId)) return false;
