@@ -18,16 +18,10 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+import { AISLES, type Aisle, RECIPE_SOURCES, RECIPE_STATUSES } from "../enums";
 
-export const recipeSource = pgEnum("recipe_source", [
-  "manual",
-  "instagram",
-  "tiktok",
-  "website",
-  "image",
-  "text",
-]);
-export const recipeStatus = pgEnum("recipe_status", ["active", "disliked", "archived"]);
+export const recipeSource = pgEnum("recipe_source", RECIPE_SOURCES);
+export const recipeStatus = pgEnum("recipe_status", RECIPE_STATUSES);
 export const mealSlot = pgEnum("meal_slot", ["breakfast", "lunch", "dinner", "snack"]);
 export const planStatus = pgEnum("plan_status", ["draft", "pending_approval", "approved"]);
 export const importStatus = pgEnum("import_status", [
@@ -39,25 +33,9 @@ export const importStatus = pgEnum("import_status", [
   "approved",
   "discarded",
 ]);
-export const aisle = pgEnum("aisle", [
-  "produce",
-  "meat_seafood",
-  "dairy_eggs",
-  "bakery",
-  "deli",
-  "pantry",
-  "canned_jarred",
-  "pasta_grains",
-  "spices_baking",
-  "condiments",
-  "frozen",
-  "beverages",
-  "snacks",
-  "household",
-  "other",
-]);
+export const aisle = pgEnum("aisle", AISLES);
 
-export type Aisle = (typeof aisle.enumValues)[number];
+export type { Aisle };
 
 export const DEFAULT_AISLE_ORDER: Aisle[] = [
   "produce",
