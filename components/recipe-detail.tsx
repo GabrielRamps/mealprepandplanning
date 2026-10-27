@@ -1,6 +1,6 @@
 "use client";
 
-import { Archive, ArchiveRestore, EllipsisVertical, Heart, Minus, Pencil, Plus, Star, ThumbsDown, Trash2 } from "lucide-react";
+import { Archive, ArchiveRestore, EllipsisVertical, Heart, Minus, Pencil, Plus, ShoppingCart, Star, ThumbsDown, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useOptimistic, useState, useTransition } from "react";
 import {
@@ -226,6 +226,11 @@ export function RecipeActions({ recipeId, status }: { recipeId: string; status: 
           </DropdownMenuItem>
           {status === "active" ? (
             <>
+              <DropdownMenuItem asChild>
+                <Link href={`/lists/new?recipe=${recipeId}`}>
+                  <ShoppingCart aria-hidden /> Make a grocery list
+                </Link>
+              </DropdownMenuItem>
               <DropdownMenuItem onSelect={() => setDialog("dislike")}>
                 <ThumbsDown aria-hidden /> Didn&apos;t like it…
               </DropdownMenuItem>

@@ -3,6 +3,7 @@ import { and, asc, desc, eq, gte, ilike, isNull, or, type SQL, sql } from "drizz
 import { alias } from "drizzle-orm/pg-core";
 import { atomic, type Database, getDb, schema, type Statement } from "@/lib/db";
 import type { Aisle, RecipeSource, RecipeStatus } from "@/lib/enums";
+import { guessAisle } from "@/lib/grocery/aisles";
 import { isUuid, type LibraryFilters } from "@/lib/library-filters";
 import { coverUrl } from "@/lib/photos";
 import { ingredientText } from "@/lib/quantity";
@@ -103,6 +104,19 @@ export async function listRecipes(householdId: string, userId: string, f: Librar
     othersRating: r.othersRating,
     isFavorite: r.isFavorite ?? false,
   }));
+}
+
+/** Active recipes for pickers (new list, planner): title order. */
+export async function pickableRecipes(
+  householdId: string,
+): Promise<{ id: string; title: string; servings: number; coverUrl: string | null }[]> {
+  const rows = await getDb()
+    .select({ id: recipes.id, title: recipes.title, servings: recipes.servings, coverImageKey: recipes.coverImageKey })
+    .from(recipes)
+    .where(and(eq(recipes.householdId, householdId), isNull(recipes.deletedAt), eq(recipes.status, "active")))
+    .orderBy(asc(sql`lower(${recipes.title})`))
+    .limit(500);
+  return rows.map(({ coverImageKey, ...r }) => ({ ...r, coverUrl: coverUrl(coverImageKey) }));
 }
 
 export async function listTags(householdId: string): Promise<{ id: string; name: string }[]> {
@@ -253,7 +267,7 @@ function ingredientStatements(q: Database, householdId: string, recipeId: string
   const canonical = new Map<string, Aisle>();
   for (const i of draft.ingredients) {
     const name = canonicalName(i.name);
-    if (!canonical.has(name)) canonical.set(name, i.aisle ?? "other");
+    if (!canonical.has(name)) canonical.set(name, i.aisle ?? guessAisle(name));
   }
   return [
     q

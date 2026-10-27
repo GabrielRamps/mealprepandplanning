@@ -70,9 +70,40 @@ export type RecipeDraft = z.infer<typeof RecipeDraft>;
 export type RecipeDraftInput = z.input<typeof RecipeDraft>;
 export type DraftIngredient = z.infer<typeof DraftIngredient>;
 
-/** Lowercase, single-spaced: the canonical ingredient name (PRD 6). */
+// Words that look plural but aren't, or whose singular isn't regular.
+const PLURAL_EXCEPTIONS: Record<string, string> = {
+  molasses: "molasses",
+  hummus: "hummus",
+  couscous: "couscous",
+  asparagus: "asparagus",
+  oats: "oats",
+  grits: "grits",
+  greens: "greens",
+  brussels: "brussels",
+  swiss: "swiss",
+  bitters: "bitters",
+  cookies: "cookie",
+  leaves: "leaf",
+  halves: "half",
+  loaves: "loaf",
+  knives: "knife",
+};
+
+/** Singular of the last word: "onions" → "onion", "berries" → "berry", "tomatoes" → "tomato". */
+export function singularize(word: string): string {
+  if (word in PLURAL_EXCEPTIONS) return PLURAL_EXCEPTIONS[word];
+  if (word.length > 4 && word.endsWith("ies")) return `${word.slice(0, -3)}y`;
+  if (word.length > 4 && word.endsWith("oes")) return word.slice(0, -2);
+  if (/(ches|shes|xes)$/.test(word)) return word.slice(0, -2);
+  if (word.length > 3 && word.endsWith("s") && !/(ss|us|is)$/.test(word)) return word.slice(0, -1);
+  return word;
+}
+
+/** Lowercase, single-spaced, singular: the canonical ingredient name (PRD 6). */
 export function canonicalName(name: string): string {
-  return name.trim().toLowerCase().replace(/\s+/g, " ");
+  const words = name.trim().toLowerCase().replace(/\s+/g, " ").split(" ");
+  words[words.length - 1] = singularize(words[words.length - 1]);
+  return words.join(" ");
 }
 
 /** Case-insensitive de-duplication, keeping the first spelling (PRD B6). */
