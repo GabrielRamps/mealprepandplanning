@@ -1,6 +1,7 @@
 # Meal Prep & Planning
 
-Private household meal planner. Spec: [docs/PRD.md](docs/PRD.md).
+Private household meal planner. Spec: [docs/PRD.md](docs/PRD.md). What
+changed and when: [CHANGELOG.md](CHANGELOG.md).
 
 Next.js 16 (App Router) on Vercel, with Neon for Postgres, Auth (Managed Better
 Auth), Object Storage and Realtime. Services are declared in [`neon.ts`](neon.ts).
