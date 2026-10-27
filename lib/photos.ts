@@ -12,12 +12,16 @@ export class PhotoError extends Error {}
 export async function saveCoverPhoto(householdId: string, file: File): Promise<string> {
   if (!ACCEPTED.has(file.type)) throw new PhotoError("Use a JPEG, PNG, WebP or HEIC photo.");
   if (file.size > MAX_UPLOAD_BYTES) throw new PhotoError("That photo is too large. Try a smaller one.");
+  return saveCoverPhotoBytes(householdId, Buffer.from(await file.arrayBuffer()));
+}
 
+/** Same, from bytes already in hand (an import's photo or the post's thumbnail). */
+export async function saveCoverPhotoBytes(householdId: string, bytes: Uint8Array): Promise<string> {
   // Loaded here so pages that only show photos don't pay for it.
   const { default: sharp } = await import("sharp");
   let webp: Buffer;
   try {
-    webp = await sharp(Buffer.from(await file.arrayBuffer()))
+    webp = await sharp(bytes)
       .rotate() // respect EXIF orientation from phone cameras
       .resize({ width: 1200, withoutEnlargement: true })
       .webp({ quality: 80 })

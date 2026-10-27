@@ -2,7 +2,7 @@
 
 import { ArrowDown, ArrowUp, Camera, EllipsisVertical, ImageOff, Plus, Trash2, X } from "lucide-react";
 import { useId, useRef, useState, useTransition } from "react";
-import { saveRecipeAction } from "@/app/(app)/recipes/actions";
+import { saveRecipeAction, type SaveRecipeResult } from "@/app/(app)/recipes/actions";
 import { PageHeader } from "@/components/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import type { Aisle } from "@/lib/enums";
 import { parseQuantity, quantityToInput } from "@/lib/quantity";
 import { MAX_TAGS, type RecipeDraftInput, uniqueTags } from "@/lib/recipe-draft";
 import { resizeImage } from "@/lib/resize-image";
@@ -42,6 +43,8 @@ export type EditorInitial = {
     name: string;
     prepNote: string | null;
     isOptional: boolean;
+    /** From an import's AI read; saved on new canonical ingredients. */
+    aisle?: Aisle | null;
   }[];
   steps: { section: string | null; text: string }[];
   tags: string[];
@@ -73,6 +76,7 @@ type IngredientItem = {
   name: string;
   prepNote: string;
   isOptional: boolean;
+  aisle: Aisle | null;
 };
 type StepItem = { key: string; kind: "step"; text: string };
 type IngredientListItem = SectionItem | IngredientItem;
@@ -89,6 +93,7 @@ const blankIngredient = (): IngredientItem => ({
   name: "",
   prepNote: "",
   isOptional: false,
+  aisle: null,
 });
 const blankStep = (): StepItem => ({ key: newKey(), kind: "step", text: "" });
 const blankSection = (): SectionItem => ({ key: newKey(), kind: "section", title: "" });
@@ -145,16 +150,41 @@ function errorKey(path: string, ingredientKeys: string[], stepKeys: string[]): s
   return TOP_LEVEL_FIELDS[path] ?? "form";
 }
 
-type CoverState = { mode: "keep" | "replace" | "remove"; previewUrl: string | null; file: File | null };
+// keep / replace / remove for recipes; `choice:<id>` picks one of `coverChoices` (imports).
+type CoverMode = "keep" | "replace" | "remove" | `choice:${string}`;
+type CoverState = { mode: CoverMode; previewUrl: string | null; file: File | null };
+
+export type CoverChoice = { id: string; url: string; label: string };
 
 type Props = {
+  /** Recipe id when editing; the import job id when reviewing an import. */
   recipeId: string | null;
   initial: EditorInitial;
   tagSuggestions: string[];
   cancelHref: string;
+  /** Defaults to saving a recipe; the import review passes approveImportAction. */
+  save?: (formData: FormData) => Promise<SaveRecipeResult>;
+  title?: string;
+  saveLabel?: string;
+  coverChoices?: CoverChoice[];
+  /** Shown under the save button (e.g. Discard on an import). */
+  footer?: React.ReactNode;
+  /** Shown above the form (e.g. an import's conflicts). */
+  notice?: React.ReactNode;
 };
 
-export function RecipeEditor({ recipeId, initial, tagSuggestions, cancelHref }: Props) {
+export function RecipeEditor({
+  recipeId,
+  initial,
+  tagSuggestions,
+  cancelHref,
+  save = saveRecipeAction,
+  title: pageTitle,
+  saveLabel = "Save",
+  coverChoices = [],
+  footer,
+  notice,
+}: Props) {
   const formId = useId();
   const [title, setTitle] = useState(initial.title);
   const [description, setDescription] = useState(initial.description);
@@ -164,7 +194,11 @@ export function RecipeEditor({ recipeId, initial, tagSuggestions, cancelHref }: 
   const [notes, setNotes] = useState(initial.notes);
   const [sourceUrl, setSourceUrl] = useState(initial.sourceUrl);
   const [tags, setTags] = useState(initial.tags);
-  const [cover, setCover] = useState<CoverState>({ mode: "keep", previewUrl: initial.coverUrl, file: null });
+  const [cover, setCover] = useState<CoverState>(() =>
+    coverChoices.length
+      ? { mode: `choice:${coverChoices[0].id}`, previewUrl: coverChoices[0].url, file: null }
+      : { mode: "keep", previewUrl: initial.coverUrl, file: null },
+  );
   const [ingredients, setIngredients] = useState<IngredientListItem[]>(() => {
     const items = withHeaders(initial.ingredients, (i) => ({
       key: newKey(),
@@ -174,6 +208,7 @@ export function RecipeEditor({ recipeId, initial, tagSuggestions, cancelHref }: 
       name: i.name,
       prepNote: i.prepNote ?? "",
       isOptional: i.isOptional,
+      aisle: i.aisle ?? null,
     }));
     return items.length ? items : [blankIngredient(), blankIngredient(), blankIngredient()];
   });
@@ -239,7 +274,7 @@ export function RecipeEditor({ recipeId, initial, tagSuggestions, cancelHref }: 
         name: item.name,
         prep_note: item.prepNote,
         is_optional: item.isOptional,
-        aisle: null,
+        aisle: item.aisle,
       });
       ingredientKeys.push(item.key);
     }
@@ -282,7 +317,7 @@ export function RecipeEditor({ recipeId, initial, tagSuggestions, cancelHref }: 
 
     setFormError(null);
     startTransition(async () => {
-      const result = await saveRecipeAction(fd);
+      const result = await save(fd);
       if (!result) return;
       const mapped: Record<string, string> = {};
       let general = result.error ?? null;
@@ -301,16 +336,40 @@ export function RecipeEditor({ recipeId, initial, tagSuggestions, cancelHref }: 
   return (
     <>
       <PageHeader
-        title={recipeId ? "Edit recipe" : "New recipe"}
+        title={pageTitle ?? (recipeId ? "Edit recipe" : "New recipe")}
         back={{ href: cancelHref, label: "Cancel" }}
         action={
           <Button type="submit" form={formId} disabled={pending}>
-            {pending ? "Saving…" : "Save"}
+            {pending ? "Saving…" : saveLabel}
           </Button>
         }
       />
       <form id={formId} onSubmit={submit} noValidate className="mx-auto flex w-full max-w-2xl flex-col gap-6 p-4">
+        {notice}
         <CoverPicker cover={cover} error={errors.cover} onPick={onPhoto} onRemove={() => setCover({ mode: "remove", previewUrl: null, file: null })} />
+        {coverChoices.length > 1 || (coverChoices.length === 1 && cover.mode !== `choice:${coverChoices[0].id}`) ? (
+          <div className="flex flex-col gap-1.5">
+            <p className="text-sm font-medium">Use a photo from the import</p>
+            <div className="flex gap-2 overflow-x-auto">
+              {coverChoices.map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  aria-label={c.label}
+                  aria-pressed={cover.mode === `choice:${c.id}`}
+                  onClick={() => setCover({ mode: `choice:${c.id}`, previewUrl: c.url, file: null })}
+                  className={cn(
+                    "size-16 shrink-0 overflow-hidden rounded-lg border-2",
+                    cover.mode === `choice:${c.id}` ? "border-primary" : "border-transparent",
+                  )}
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element -- import photos and post thumbnails */}
+                  <img src={c.url} alt="" className="size-full object-cover" />
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
 
         <section className="flex flex-col gap-4">
           <Field label="Title" htmlFor="title" error={errors.title}>
@@ -456,8 +515,9 @@ export function RecipeEditor({ recipeId, initial, tagSuggestions, cancelHref }: 
           </p>
         ) : null}
         <Button type="submit" size="lg" disabled={pending}>
-          {pending ? "Saving…" : "Save recipe"}
+          {pending ? "Saving…" : saveLabel === "Save" ? "Save recipe" : saveLabel}
         </Button>
+        {footer}
       </form>
     </>
   );
