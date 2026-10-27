@@ -1,5 +1,6 @@
 import "server-only";
 import { createNeonAuth, type NeonAuth } from "@neondatabase/auth/next/server";
+import { connection } from "next/server";
 
 // Created on first use so a missing env var fails the request with a clear
 // message instead of failing `next build`.
@@ -22,6 +23,9 @@ export type SessionUser = { id: string; email: string; name: string };
 
 /** The signed-in user, or null. */
 export async function getSessionUser(): Promise<SessionUser | null> {
+  // Stop prerendering here: Neon Auth would otherwise catch Next's dynamic-usage
+  // signal from cookies() and log it as an error during `next build`.
+  await connection();
   const { data: session } = await getAuth().getSession();
   const user = session?.user;
   if (!user) return null;
