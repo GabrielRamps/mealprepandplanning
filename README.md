@@ -22,6 +22,14 @@ npm run dev
 
 Sign in, then open `/api/health` to check every service end to end.
 
+## Getting started on your phones
+
+1. Open the app in Safari on the iPhone, then Share → **Add to Home Screen**.
+2. Sign up. The first person picks **Create household**; the invite code is in
+   Settings (gear icon on Recipes), valid for 7 days, with **Share code** and
+   **New code** buttons.
+3. The second person signs up and picks **Join with code**.
+
 ## Scripts
 
 | Script | What it does |

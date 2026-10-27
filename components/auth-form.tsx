@@ -3,14 +3,14 @@
 import Link from "next/link";
 import { useActionState } from "react";
 import type { AuthFormState } from "@/app/auth/actions";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 type Props = {
   mode: "sign-in" | "sign-up";
   action: (prev: AuthFormState, formData: FormData) => Promise<AuthFormState>;
 };
-
-const inputClass =
-  "w-full rounded-xl border border-black/15 bg-white px-4 py-3 text-base outline-none focus:border-emerald-600 dark:border-white/15 dark:bg-neutral-900";
 
 export function AuthForm({ mode, action }: Props) {
   const [state, formAction, pending] = useActionState(action, null);
@@ -21,39 +21,35 @@ export function AuthForm({ mode, action }: Props) {
       <h1 className="text-2xl font-semibold">{isSignUp ? "Create your account" : "Sign in"}</h1>
 
       {isSignUp && (
-        <Field label="Name" error={state?.fieldErrors?.name}>
-          <input name="name" autoComplete="name" required className={inputClass} />
+        <Field id="name" label="Name" error={state?.fieldErrors?.name}>
+          <Input id="name" name="name" autoComplete="name" required />
         </Field>
       )}
-      <Field label="Email" error={state?.fieldErrors?.email}>
-        <input name="email" type="email" autoComplete="email" inputMode="email" required className={inputClass} />
+      <Field id="email" label="Email" error={state?.fieldErrors?.email}>
+        <Input id="email" name="email" type="email" autoComplete="email" inputMode="email" required />
       </Field>
-      <Field label="Password" error={state?.fieldErrors?.password}>
-        <input
+      <Field id="password" label="Password" error={state?.fieldErrors?.password}>
+        <Input
+          id="password"
           name="password"
           type="password"
           autoComplete={isSignUp ? "new-password" : "current-password"}
           minLength={8}
           required
-          className={inputClass}
         />
       </Field>
 
       {state?.error && (
-        <p role="alert" className="text-sm text-red-600">
+        <p role="alert" className="text-sm text-destructive">
           {state.error}
         </p>
       )}
 
-      <button
-        type="submit"
-        disabled={pending}
-        className="min-h-11 rounded-xl bg-emerald-700 px-4 py-3 font-medium text-white disabled:opacity-60"
-      >
+      <Button type="submit" size="lg" disabled={pending}>
         {pending ? "Please wait…" : isSignUp ? "Create account" : "Sign in"}
-      </button>
+      </Button>
 
-      <p className="text-center text-sm text-neutral-600 dark:text-neutral-400">
+      <p className="text-center text-sm text-muted-foreground">
         {isSignUp ? (
           <>
             Already have an account? <Link href="/auth/sign-in" className="underline">Sign in</Link>
@@ -68,12 +64,12 @@ export function AuthForm({ mode, action }: Props) {
   );
 }
 
-function Field({ label, error, children }: { label: string; error?: string; children: React.ReactNode }) {
+function Field({ id, label, error, children }: { id: string; label: string; error?: string; children: React.ReactNode }) {
   return (
-    <label className="flex flex-col gap-1.5 text-sm font-medium">
-      {label}
+    <div className="flex flex-col gap-1.5">
+      <Label htmlFor={id}>{label}</Label>
       {children}
-      {error && <span className="text-sm font-normal text-red-600">{error}</span>}
-    </label>
+      {error && <span className="text-sm text-destructive">{error}</span>}
+    </div>
   );
 }

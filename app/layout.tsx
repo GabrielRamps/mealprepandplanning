@@ -14,14 +14,20 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Meal Planner",
+  title: { default: "Meal Planner", template: "%s · Meal Planner" },
   description: "Our recipes, weekly plan and grocery list.",
+  // Home-screen install on iPhone: full screen, app name under the icon.
+  appleWebApp: { capable: true, title: "Meal Planner", statusBarStyle: "default" },
 };
 
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
+    { media: "(prefers-color-scheme: dark)", color: "#0a0a0a" },
+  ],
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
