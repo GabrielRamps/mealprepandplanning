@@ -9,15 +9,18 @@ import {
   addManualItem,
   createList,
   deleteItem,
+  getList,
   type ItemPatch,
   ListBuildError,
   type ListItem,
   listInHousehold,
+  rebuildList,
   setItemChecked,
   setListStatus,
   updateItem,
 } from "@/lib/grocery/lists";
 import { requireHousehold } from "@/lib/household";
+import { getPlan, planPicks } from "@/lib/plan/plans";
 import { UNIT_CODES } from "@/lib/units";
 
 const NewList = z.object({
@@ -103,4 +106,15 @@ export async function setListStatusAction(listId: string, status: "active" | "co
   await setListStatus(membership.householdId, listId, status);
   revalidatePath("/lists");
   revalidatePath(`/lists/${listId}`);
+}
+
+/** "Plan changed — update list?" (PRD 8.4): rebuild from the plan, keeping checks and manual items. */
+export async function rebuildListAction(listId: string): Promise<{ error?: string }> {
+  const { membership } = await requireList(listId);
+  const list = await getList(membership.householdId, listId);
+  const plan = list?.mealPlanId ? await getPlan(membership.householdId, list.mealPlanId) : null;
+  if (!plan) return { error: "This list isn't linked to a plan anymore." };
+  await rebuildList(membership.householdId, listId, planPicks(plan));
+  revalidatePath(`/lists/${listId}`);
+  return {};
 }

@@ -3,6 +3,7 @@
 import { BookOpen, CalendarDays, Download, ShoppingCart, type LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 
 type Tab = { href: string; label: string; icon: LucideIcon; alsoActiveFor?: string[] };
@@ -19,8 +20,39 @@ function isActive(pathname: string, tab: Tab): boolean {
   return [tab.href, ...(tab.alsoActiveFor ?? [])].some((p) => pathname === p || pathname.startsWith(`${p}/`));
 }
 
+/** Fired after a plan is sent or reviewed, so the badge updates at once. */
+export const PLANS_CHANGED = "plans-changed";
+
+/** Plans waiting for my answer (PRD D2), refreshed on navigation, focus and every minute. */
+function useWaitingCount(pathname: string): number {
+  const [count, setCount] = useState(0);
+  useEffect(() => {
+    let cancelled = false;
+    const load = () =>
+      fetch("/api/plans/waiting", { cache: "no-store" })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d: { count: number } | null) => {
+          if (!cancelled && d) setCount(d.count);
+        })
+        .catch(() => {});
+    void load();
+    const timer = setInterval(load, 60_000);
+    const onVisible = () => document.visibilityState === "visible" && load();
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener(PLANS_CHANGED, load);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener(PLANS_CHANGED, load);
+    };
+  }, [pathname]);
+  return count;
+}
+
 export function TabBar() {
   const pathname = usePathname();
+  const waiting = useWaitingCount(pathname);
 
   return (
     <nav
@@ -41,8 +73,19 @@ export function TabBar() {
                   active ? "text-primary" : "text-muted-foreground hover:text-foreground",
                 )}
               >
-                <Icon className="size-6" strokeWidth={active ? 2.25 : 1.75} aria-hidden />
+                <span className="relative">
+                  <Icon className="size-6" strokeWidth={active ? 2.25 : 1.75} aria-hidden />
+                  {tab.href === "/plan" && waiting > 0 ? (
+                    <span
+                      className="absolute -top-1.5 -right-2.5 flex min-w-5 items-center justify-center rounded-full bg-red-600 px-1 text-[0.7rem] leading-5 font-semibold text-white"
+                      data-testid="plan-badge"
+                    >
+                      {waiting}
+                    </span>
+                  ) : null}
+                </span>
                 {tab.label}
+                {tab.href === "/plan" && waiting > 0 ? <span className="sr-only">, {waiting} waiting for your approval</span> : null}
               </Link>
             </li>
           );
