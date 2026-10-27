@@ -30,6 +30,16 @@ Sign in, then open `/api/health` to check every service end to end.
    **New code** buttons.
 3. The second person signs up and picks **Join with code**.
 
+## Import (milestone 5)
+
+Imports need `ANTHROPIC_API_KEY` (websites, photos, pasted text),
+`GEMINI_API_KEY` (Instagram and TikTok video + caption) and `APIFY_TOKEN`
+(fetching the posts). Without them an import fails with a plain message and can
+be retried later. `CRON_SECRET` protects the daily cleanup of old uploads.
+
+The iPhone Shortcut posts to `/api/import` with a personal token from
+Settings; the steps are listed there.
+
 ## Scripts
 
 | Script | What it does |
