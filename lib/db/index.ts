@@ -1,7 +1,8 @@
 import "server-only";
 import { neon } from "@neondatabase/serverless";
 import { attachDatabasePool } from "@vercel/functions";
-import { drizzle as drizzleHttp } from "drizzle-orm/neon-http";
+import type { BatchItem } from "drizzle-orm/batch";
+import { drizzle as drizzleHttp, type NeonHttpDatabase } from "drizzle-orm/neon-http";
 import { drizzle as drizzlePg, type NodePgDatabase } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
 import * as schema from "./schema";
@@ -35,6 +36,28 @@ const globalForDb = globalThis as unknown as { __db?: Database };
 export function getDb(): Database {
   globalForDb.__db ??= createDb();
   return globalForDb.__db;
+}
+
+/** A write statement built from the handle `atomic` passes in. */
+export type Statement = BatchItem<"pg">;
+
+/**
+ * Runs writes all-or-nothing: one transaction over TCP, or one batch request
+ * over Neon HTTP (which has no interactive transactions). `build` gets the
+ * handle to write through and returns the statements in order, so the writes
+ * can't depend on each other's results; generate ids up front instead.
+ */
+export async function atomic(build: (q: Database) => Statement[]): Promise<void> {
+  const db = getDb();
+  if (process.env.DATABASE_DRIVER === "neon-http") {
+    const statements = build(db);
+    if (statements.length === 0) return;
+    await (db as unknown as NeonHttpDatabase<typeof schema>).batch(statements as [Statement, ...Statement[]]);
+    return;
+  }
+  await db.transaction(async (tx) => {
+    for (const statement of build(tx as unknown as Database)) await (statement as unknown as PromiseLike<unknown>);
+  });
 }
 
 export { schema };
