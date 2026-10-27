@@ -7,9 +7,17 @@
 node_modules/
 .next/
 out/
+build/
 dist/
+coverage/
 .vercel/
+*.tsbuildinfo
+next-env.d.ts
+
+# neon
+.neon
 
 # misc
 .DS_Store
+*.pem
 *.log
