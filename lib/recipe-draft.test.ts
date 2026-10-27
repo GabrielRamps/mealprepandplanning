@@ -66,6 +66,28 @@ describe("helpers", () => {
     expect(canonicalName("  Yellow   Onion ")).toBe("yellow onion");
   });
 
+  it.each([
+    ["Onions", "onion"],
+    ["eggs", "egg"],
+    ["Cherry Tomatoes", "cherry tomato"],
+    ["raspberries", "raspberry"],
+    ["bay leaves", "bay leaf"],
+    ["peaches", "peach"],
+    ["chicken thighs", "chicken thigh"],
+    ["hummus", "hummus"],
+    ["molasses", "molasses"],
+    ["rolled oats", "rolled oats"],
+    ["asparagus", "asparagus"],
+    ["swiss", "swiss"],
+    ["peas", "pea"],
+    ["glass", "glass"],
+    ["chickpeas", "chickpea"],
+    ["bananas", "banana"],
+    ["boxes", "box"],
+  ])("singularizes %j → %j", (input, out) => {
+    expect(canonicalName(input)).toBe(out);
+  });
+
   it("dedupes tags case-insensitively", () => {
     expect(uniqueTags(["Dinner", "dinner ", " Quick", "", "DINNER"])).toEqual(["Dinner", "Quick"]);
   });
