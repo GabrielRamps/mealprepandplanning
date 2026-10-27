@@ -1,6 +1,6 @@
 // Aisle names for display, and a keyword guess for ingredients typed by hand
 // (imports get an aisle from the AI instead, PRD 7.4).
-import type { Aisle } from "@/lib/enums";
+import { AISLES, type Aisle } from "@/lib/enums";
 
 export const AISLE_LABELS: Record<Aisle, string> = {
   produce: "Produce",
@@ -59,4 +59,11 @@ export function guessAisle(name: string): Aisle {
     if (patterns.some((p) => p.test(name))) return aisle;
   }
   return "other";
+}
+
+/** A saved aisle order must list every aisle exactly once. */
+export function isAisleOrder(value: unknown): value is Aisle[] {
+  if (!Array.isArray(value) || value.length !== AISLES.length) return false;
+  const seen = new Set(value);
+  return seen.size === AISLES.length && AISLES.every((a) => seen.has(a));
 }

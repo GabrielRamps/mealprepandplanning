@@ -40,6 +40,16 @@ be retried later. `CRON_SECRET` protects the daily cleanup of old uploads.
 The iPhone Shortcut posts to `/api/import` with a personal token from
 Settings; the steps are listed there.
 
+## Live sync (milestone 6)
+
+Open lists and plans update on the other phone through Neon Realtime when
+`NEXT_PUBLIC_NEON_REALTIME_URL` is set. Without it, or while the connection is
+down, lists poll every 3 s and plans every 15 s.
+
+Settings → **Your store** sets the aisle order; **Ingredient aisles and pantry
+staples** sets each ingredient's aisle and whether it goes in the "Check you
+have" group.
+
 ## Scripts
 
 | Script | What it does |

@@ -18,7 +18,7 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
-import { AISLES, type Aisle, RECIPE_SOURCES, RECIPE_STATUSES } from "../enums";
+import { AISLES, type Aisle, DEFAULT_AISLE_ORDER, RECIPE_SOURCES, RECIPE_STATUSES } from "../enums";
 
 export const recipeSource = pgEnum("recipe_source", RECIPE_SOURCES);
 export const recipeStatus = pgEnum("recipe_status", RECIPE_STATUSES);
@@ -36,24 +36,7 @@ export const importStatus = pgEnum("import_status", [
 export const aisle = pgEnum("aisle", AISLES);
 
 export type { Aisle };
-
-export const DEFAULT_AISLE_ORDER: Aisle[] = [
-  "produce",
-  "meat_seafood",
-  "deli",
-  "bakery",
-  "dairy_eggs",
-  "frozen",
-  "pasta_grains",
-  "canned_jarred",
-  "condiments",
-  "spices_baking",
-  "pantry",
-  "snacks",
-  "beverages",
-  "household",
-  "other",
-];
+export { DEFAULT_AISLE_ORDER };
 
 const createdAt = () => timestamp("created_at", { withTimezone: true }).notNull().defaultNow();
 const updatedAt = () => timestamp("updated_at", { withTimezone: true }).notNull().defaultNow();

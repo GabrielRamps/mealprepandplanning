@@ -19,6 +19,25 @@ export const AISLES = [
 ] as const;
 export type Aisle = (typeof AISLES)[number];
 
+/** A new household's store walk; matches the households.aisle_order default. */
+export const DEFAULT_AISLE_ORDER: readonly Aisle[] = [
+  "produce",
+  "meat_seafood",
+  "deli",
+  "bakery",
+  "dairy_eggs",
+  "frozen",
+  "pasta_grains",
+  "canned_jarred",
+  "condiments",
+  "spices_baking",
+  "pantry",
+  "snacks",
+  "beverages",
+  "household",
+  "other",
+];
+
 export const RECIPE_SOURCES = ["manual", "instagram", "tiktok", "website", "image", "text"] as const;
 export type RecipeSource = (typeof RECIPE_SOURCES)[number];
 
