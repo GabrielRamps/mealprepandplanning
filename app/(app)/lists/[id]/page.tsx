@@ -28,6 +28,7 @@ export default async function ListPage(props: PageProps<"/lists/[id]">) {
       name={list.name}
       status={list.status}
       planChanged={planChanged}
+      savedList={list.savedList}
       initialItems={list.items}
       aisleOrder={list.aisleOrder}
       memberNames={Object.fromEntries(members.map((m) => [m.userId, m.displayName.split(/\s+/)[0]]))}

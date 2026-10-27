@@ -49,6 +49,26 @@ Settings; the steps are listed there.
 | `npm run db:generate` | New migration from `lib/db/schema.ts` |
 | `npm run db:migrate` | Apply migrations (direct connection) |
 
+## Migrations and deploys
+
+The Vercel build is plain `next build`; it doesn't run migrations. Before
+merging a change that adds one, run `npm run db:migrate` against production
+(`DATABASE_URL_UNPOOLED` from the Neon project's production branch; add
+`DATABASE_DRIVER=neon-http` where outbound TCP is blocked). Keep migrations
+additive so the live app keeps working in between. Each preview deploy gets its
+own Neon branch, copied from production when the branch is first deployed.
+
+## Tests
+
+`npm test` runs the unit tests. `lib/grocery/lists.db.test.ts` also exercises
+lists, saved lists and deletes against a real database, and only runs with
+`TEST_DATABASE_URL` set to a throwaway database with migrations applied (a
+schema-only Neon branch works; never production):
+
+```bash
+TEST_DATABASE_URL=postgres://… DATABASE_DRIVER=neon-http npm test
+```
+
 ## Deviations from the PRD
 
 - **Database driver:** `pg` with `attachDatabasePool` (Neon's guidance for

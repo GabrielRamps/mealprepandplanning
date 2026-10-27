@@ -9,16 +9,26 @@ import {
   addManualItem,
   createList,
   deleteItem,
+  deleteList,
   getList,
   type ItemPatch,
   ListBuildError,
   type ListItem,
   listInHousehold,
+  type ListStatus,
   rebuildList,
   setItemChecked,
   setListStatus,
   updateItem,
 } from "@/lib/grocery/lists";
+import {
+  deleteSavedList,
+  renameSavedList,
+  reorderSavedList,
+  saveListAs,
+  SavedListError,
+} from "@/lib/grocery/saved";
+import { listsHref, tabForStatus } from "@/lib/grocery/tabs";
 import { requireHousehold } from "@/lib/household";
 import { getPlan, planPicks } from "@/lib/plan/plans";
 import { UNIT_CODES } from "@/lib/units";
@@ -100,12 +110,89 @@ export async function deleteItemAction(listId: string, itemId: string): Promise<
   await deleteItem(listId, itemId);
 }
 
-export async function setListStatusAction(listId: string, status: "active" | "completed"): Promise<void> {
+/**
+ * Done shopping (the list moves to History) or reopen it. From the Lists
+ * screen pass `backToLists`; from the list itself, the list stays on screen.
+ */
+export async function setListStatusAction(listId: string, status: ListStatus, backToLists = false): Promise<void> {
   if (status !== "active" && status !== "completed") return;
   const { membership } = await requireList(listId);
   await setListStatus(membership.householdId, listId, status);
   revalidatePath("/lists");
   revalidatePath(`/lists/${listId}`);
+  // Back to the view the list just left, with a note saying where it went.
+  if (backToLists === true) {
+    redirect(status === "completed" ? listsHref("active", "moved-to-history") : listsHref("history", "reopened"));
+  }
+}
+
+/**
+ * Deletes a list for both people, then shows the Lists view it was in with
+ * "List deleted." Already gone (the other phone deleted it) ends the same way.
+ */
+export async function deleteListAction(listId: string): Promise<void> {
+  const { membership } = await requireHousehold();
+  const status = await deleteList(membership.householdId, listId);
+  revalidatePath("/lists");
+  redirect(listsHref(tabForStatus(status ?? "active"), "list-deleted"));
+}
+
+const SavedName = z.string().trim().min(1, "Give it a name").max(80, "Keep the name under 80 characters");
+
+export type SaveListResult = { error?: string; savedListId?: string; name?: string };
+
+/** Save for reorder: the list's recipes, servings and added items, under a name. `update` replaces its linked saved list. */
+export async function saveListAction(listId: string, name: string, update: boolean): Promise<SaveListResult> {
+  const { user, membership } = await requireList(listId);
+  const parsed = SavedName.safeParse(name);
+  if (!parsed.success) return { error: parsed.error.issues[0].message };
+  let savedListId: string;
+  try {
+    savedListId = await saveListAs({
+      householdId: membership.householdId,
+      userId: user.id,
+      listId,
+      name: parsed.data,
+      update: update === true,
+    });
+  } catch (err) {
+    if (err instanceof SavedListError) return { error: err.message };
+    throw err;
+  }
+  revalidatePath("/lists");
+  revalidatePath(`/lists/${listId}`);
+  return { savedListId, name: parsed.data };
+}
+
+/** Reorder: a fresh active list from a saved list, then open it. */
+export async function reorderSavedListAction(savedListId: string): Promise<{ error?: string }> {
+  const { user, membership } = await requireHousehold();
+  let listId: string;
+  try {
+    listId = await reorderSavedList({ householdId: membership.householdId, userId: user.id, savedListId });
+  } catch (err) {
+    if (err instanceof SavedListError || err instanceof ListBuildError) return { error: err.message };
+    throw err;
+  }
+  revalidatePath("/lists");
+  redirect(`/lists/${listId}`);
+}
+
+export async function renameSavedListAction(savedListId: string, name: string): Promise<{ error?: string }> {
+  const { membership } = await requireHousehold();
+  const parsed = SavedName.safeParse(name);
+  if (!parsed.success) return { error: parsed.error.issues[0].message };
+  if (!(await renameSavedList(membership.householdId, savedListId, parsed.data))) return { error: "That saved list was deleted." };
+  revalidatePath("/lists");
+  return {};
+}
+
+/** Deletes a saved list for both people. Lists already made from it stay. */
+export async function deleteSavedListAction(savedListId: string): Promise<void> {
+  const { membership } = await requireHousehold();
+  await deleteSavedList(membership.householdId, savedListId);
+  revalidatePath("/lists");
+  redirect(listsHref("reorder", "saved-deleted"));
 }
 
 /** "Plan changed — update list?" (PRD 8.4): rebuild from the plan, keeping checks and manual items. */
