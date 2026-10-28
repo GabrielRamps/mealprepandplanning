@@ -1,11 +1,15 @@
 import type { Metadata } from "next";
+import { ChevronRight } from "lucide-react";
 import { headers } from "next/headers";
+import Link from "next/link";
 import { signOutAction } from "@/app/auth/actions";
 import { PageHeader } from "@/components/page-header";
 import { CopyAppUrl, ImportTokens } from "@/components/import-tokens";
 import { ShareCodeButton } from "@/components/share-code-button";
+import { AisleOrderEditor } from "@/components/store-settings";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { getAisleOrder } from "@/lib/grocery/ingredients";
 import { getMembers, MAX_HOUSEHOLD_MEMBERS, requireHousehold } from "@/lib/household";
 import { listTokens } from "@/lib/import/tokens";
 import { regenerateInviteCodeAction } from "./actions";
@@ -24,7 +28,11 @@ function inviteStatus(expiresAt: Date | null): { valid: boolean; text: string } 
 
 export default async function SettingsPage() {
   const { user, membership } = await requireHousehold();
-  const [members, tokens] = await Promise.all([getMembers(membership.householdId), listTokens(membership.householdId, user.id)]);
+  const [members, tokens, aisleOrder] = await Promise.all([
+    getMembers(membership.householdId),
+    listTokens(membership.householdId, user.id),
+    getAisleOrder(membership.householdId),
+  ]);
   const h = await headers();
   const host = h.get("x-forwarded-host") ?? h.get("host");
   const appUrl = process.env.APP_URL || (host ? `${h.get("x-forwarded-proto") ?? "https"}://${host}` : "");
@@ -82,6 +90,26 @@ export default async function SettingsPage() {
                 </Button>
               </form>
             </div>
+          </CardContent>
+        </Card>
+
+        <Card id="store">
+          <CardHeader>
+            <CardTitle className="text-lg">Your store</CardTitle>
+            <CardDescription>Put aisles in the order you walk them. Shopping lists follow this order.</CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            <AisleOrderEditor initialOrder={aisleOrder} />
+            <Link
+              href="/settings/ingredients"
+              className="flex min-h-11 items-center justify-between gap-2 rounded-lg border px-3 font-medium hover:bg-muted"
+            >
+              <span>
+                Ingredient aisles and pantry staples
+                <span className="block text-sm font-normal text-muted-foreground">Salt, oil and other things you usually have</span>
+              </span>
+              <ChevronRight className="size-5 shrink-0 text-muted-foreground" aria-hidden />
+            </Link>
           </CardContent>
         </Card>
 

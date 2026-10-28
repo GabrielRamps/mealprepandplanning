@@ -2,7 +2,8 @@
 
 import { Check, ChevronLeft, ChevronRight, Copy, Minus, Plus, Send, ShoppingCart, UtensilsCrossed } from "lucide-react";
 import Link from "next/link";
-import { useMemo, useState, useSyncExternalStore, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, useTransition } from "react";
 import {
   addPlanEntryAction,
   approvePlanAction,
@@ -14,6 +15,7 @@ import {
   sendPlanAction,
   updatePlanEntryAction,
 } from "@/app/(app)/plan/actions";
+import { LiveSignal } from "@/components/live-signal";
 import { PageHeader } from "@/components/page-header";
 import { PLANS_CHANGED } from "@/components/tab-bar";
 import { Button } from "@/components/ui/button";
@@ -26,6 +28,9 @@ import type { PlanEntry, WeekPlan } from "@/lib/plan/plans";
 import { canEdit, canReview, canSend } from "@/lib/plan/rules";
 import { addDays, dayLabel, localToday, MEAL_SLOTS, type MealSlot, SLOT_LABELS, weekDays, weekLabel, weekStartOf } from "@/lib/plan/week";
 import { cn } from "@/lib/utils";
+
+// Without Realtime the plan reloads every 15 s while on screen, and when the app comes back.
+const REFRESH_MS = 15_000;
 
 type Recipe = { id: string; title: string; servings: number; coverUrl: string | null };
 
@@ -53,6 +58,7 @@ export function WeekPlanView({ plan, recipes, userId, memberNames, partnerLabel,
   const today = useSyncExternalStore(noSubscribe, localToday, () => null);
   const thisWeek = today ? weekStartOf(today) : null;
   const name = (id: string | null) => (id && memberNames[id]) || "your partner";
+  const live = usePlanSync(plan.weekStart, pending);
 
   function run(action: () => Promise<PlanResult | void>, after?: () => void) {
     setMessage(null);
@@ -74,6 +80,7 @@ export function WeekPlanView({ plan, recipes, userId, memberNames, partnerLabel,
 
   return (
     <>
+      {live}
       <PageHeader title="Plan" />
       <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-4 p-4">
         <nav aria-label="Weeks" className="flex items-center justify-between gap-2">
@@ -533,4 +540,51 @@ function RequestChangesDialog({
       </DialogContent>
     </Dialog>
   );
+}
+
+/**
+ * Keeps the week in step with the partner's phone: Realtime when it's live,
+ * polling otherwise. While one of our own actions is saving, a reload would
+ * read the plan before the save lands and show it stale, so it waits.
+ */
+function usePlanSync(weekStart: string, saving: boolean) {
+  const router = useRouter();
+  const [live, setLive] = useState(false);
+  const deferred = useRef(false);
+  const savingNow = useRef(saving);
+
+  const reload = useCallback(() => {
+    router.refresh();
+    window.dispatchEvent(new Event(PLANS_CHANGED));
+  }, [router]);
+
+  const onChange = useCallback(() => {
+    if (savingNow.current) deferred.current = true;
+    else reload();
+  }, [reload]);
+
+  useEffect(() => {
+    savingNow.current = saving;
+    if (saving || !deferred.current) return;
+    deferred.current = false;
+    reload();
+  }, [saving, reload]);
+
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === "visible") reload();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    const timer = live
+      ? null
+      : setInterval(() => {
+          if (document.visibilityState === "visible" && !savingNow.current) reload();
+        }, REFRESH_MS);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      if (timer) clearInterval(timer);
+    };
+  }, [live, reload]);
+
+  return <LiveSignal sealUrl="/api/realtime/plan" body={{ weekStart }} onChange={onChange} onLive={setLive} />;
 }

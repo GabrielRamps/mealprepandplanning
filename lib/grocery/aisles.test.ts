@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { guessAisle } from "./aisles";
+import { AISLES, DEFAULT_AISLE_ORDER } from "@/lib/enums";
+import { guessAisle, isAisleOrder } from "./aisles";
 
 describe("guessAisle", () => {
   it.each([
@@ -34,5 +35,20 @@ describe("guessAisle", () => {
     ["unobtainium", "other"],
   ])("%s → %s", (name, aisle) => {
     expect(guessAisle(name)).toBe(aisle);
+  });
+});
+
+describe("isAisleOrder", () => {
+  it("accepts every aisle once, in any order", () => {
+    expect(isAisleOrder([...DEFAULT_AISLE_ORDER])).toBe(true);
+    expect(isAisleOrder([...AISLES].reverse())).toBe(true);
+  });
+
+  it("rejects missing, repeated or unknown aisles", () => {
+    expect(isAisleOrder(DEFAULT_AISLE_ORDER.slice(1))).toBe(false);
+    expect(isAisleOrder([...DEFAULT_AISLE_ORDER.slice(1), "deli"])).toBe(false);
+    expect(isAisleOrder([...DEFAULT_AISLE_ORDER.slice(1), "garden"])).toBe(false);
+    expect(isAisleOrder("produce")).toBe(false);
+    expect(isAisleOrder(null)).toBe(false);
   });
 });

@@ -3,6 +3,48 @@
 What changed, newest first. Database changes say when they reached production;
 the Vercel build doesn't run migrations (see README → Migrations and deploys).
 
+## 2026-10-28 · Milestone 6: live sync, aisle order and pantry staples
+
+### For you
+
+- **Live sync:** an open shopping list or weekly plan updates on the other
+  phone as soon as something changes (about half a second in testing). If the
+  live connection is down, lists check every 3 s and plans every 15 s.
+- **Your store** (Settings): put aisles in the order you walk them; lists
+  follow it. Reset to default order puts it back.
+- **Ingredient aisles and pantry staples** (Settings): search ingredients and
+  set each one's aisle and whether it's a pantry staple ("Check you have" group
+  at the end of a list). Changes apply to new lists and to unchecked items on
+  active lists.
+
+### Database
+
+No migration. Uses `households.aisle_order` and `ingredients.aisle` /
+`is_pantry_staple`, which already existed.
+
+### Vercel
+
+No changes. Live sync uses `NEXT_PUBLIC_NEON_REALTIME_URL` and
+`NEON_REALTIME_SECRET`, already set.
+
+### Code
+
+- `components/live-signal.tsx`: subscribes to a sealed Realtime query and
+  tells the screen when to reload; `components/realtime-root.tsx` reports
+  whether Realtime is available.
+- `lib/realtime.ts`: `planLiveQuery`; seal route `app/api/realtime/plan`.
+- `lib/grocery/ingredients.ts`, `components/store-settings.tsx`,
+  `app/(app)/settings/ingredients`, settings actions.
+- Plan reloads wait while your own save is in flight, so the screen never
+  shows the plan from before the save.
+
+### Tested
+
+- Unit tests (new `isAisleOrder` tests), lint, typecheck, build.
+- Browser suites on a temporary Neon branch with Realtime on and with it off,
+  including the earlier milestones' suites, re-run after merging the Lists
+  update; `lib/grocery/lists.db.test.ts` passes on the merged code.
+
 ## 2026-10-27 · Lists: Active / Reorder / History, delete, saved lists
 
 ### For you

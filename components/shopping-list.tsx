@@ -12,6 +12,7 @@ import {
   updateItemAction,
 } from "@/app/(app)/lists/actions";
 import { ListActionsMenu, SaveListDialog } from "@/components/list-actions";
+import { LiveSignal } from "@/components/live-signal";
 import { EmptyState, PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -27,7 +28,9 @@ import { isUnitCode } from "@/lib/units";
 import { cn } from "@/lib/utils";
 
 // Polls every 3 s so a check-off shows on the other phone within 5 s (PRD E2).
+// While Realtime is live it signals changes, and polling is only a safety net.
 const POLL_MS = 3000;
+const LIVE_POLL_MS = 15_000;
 
 type Props = {
   listId: string;
@@ -50,6 +53,7 @@ export function ShoppingList({ listId, name, status, planChanged, savedList, ini
   // Items with a write in flight: polls leave them alone until the server answers.
   const pending = useRef(new Set<string>());
   const since = useRef<string | null>(null);
+  const [live, setLive] = useState(false);
 
   const apply = useCallback((item: ListItem) => {
     setItems((list) => (list.some((i) => i.id === item.id) ? list.map((i) => (i.id === item.id ? item : i)) : [...list, item]));
@@ -75,13 +79,16 @@ export function ShoppingList({ listId, name, status, planChanged, savedList, ini
     });
   }, [listId]);
 
+  useEffect(() => {
+    since.current = new Date(Date.now() - 2000).toISOString();
+  }, [listId]);
+
   // Poll while the list is on screen, and right away when it comes back.
   useEffect(() => {
     if (gone) return;
-    since.current = new Date(Date.now() - 2000).toISOString();
     const timer = setInterval(() => {
       if (document.visibilityState === "visible") void poll();
-    }, POLL_MS);
+    }, live ? LIVE_POLL_MS : POLL_MS);
     const onVisible = () => {
       if (document.visibilityState === "visible") void poll();
     };
@@ -90,7 +97,9 @@ export function ShoppingList({ listId, name, status, planChanged, savedList, ini
       clearInterval(timer);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [poll, gone]);
+  }, [poll, live, gone]);
+
+  const onLiveChange = useCallback(() => void poll(), [poll]);
 
   useWakeLock(status === "active" && !gone);
 
@@ -149,6 +158,7 @@ export function ShoppingList({ listId, name, status, planChanged, savedList, ini
 
   return (
     <>
+      <LiveSignal sealUrl="/api/realtime/grocery-items" body={{ listId }} onChange={onLiveChange} onLive={setLive} />
       <PageHeader
         title={name}
         back={back}

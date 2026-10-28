@@ -56,3 +56,25 @@ export function groceryItemsLiveQuery(userId: string, listId: string) {
     [userId, listId],
   );
 }
+
+/** Row shape of a live week plan: enough to notice any change to it. */
+export type LivePlan = {
+  id: string;
+  status: string;
+  updated_at: string;
+};
+
+/**
+ * The household's plan for one week. Every change to its meals bumps
+ * updated_at, so this one row signals edits, sends and reviews. Before the
+ * plan exists the result is empty; the row appearing is a change too.
+ */
+export function planLiveQuery(userId: string, weekStart: string) {
+  return rawSql<LivePlan>(
+    `SELECT mp.id, mp.status, mp.updated_at
+     FROM meal_plans mp
+     INNER JOIN household_members hm ON hm.household_id = mp.household_id
+     WHERE hm.user_id = $1 AND mp.week_start = $2::date`,
+    [userId, weekStart],
+  );
+}
