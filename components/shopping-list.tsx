@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, ChevronRight, EllipsisVertical, Printer, RotateCcw, Trash2 } from "lucide-react";
+import { Bookmark, BookmarkCheck, Check, CheckCheck, ChevronRight, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
@@ -8,26 +8,21 @@ import {
   addManualItemAction,
   deleteItemAction,
   rebuildListAction,
-  setListStatusAction,
   toggleItemAction,
   updateItemAction,
 } from "@/app/(app)/lists/actions";
+import { ListActionsMenu, SaveListDialog } from "@/components/list-actions";
 import { LiveSignal } from "@/components/live-signal";
-import { PageHeader } from "@/components/page-header";
+import { EmptyState, PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { AISLES, type Aisle } from "@/lib/enums";
 import { AISLE_LABELS } from "@/lib/grocery/aisles";
 import { groupItems, isOptionalItem } from "@/lib/grocery/build";
 import type { ListItem } from "@/lib/grocery/lists";
+import { listsHref, tabForStatus } from "@/lib/grocery/tabs";
 import { formatAmount } from "@/lib/quantity";
 import { isUnitCode } from "@/lib/units";
 import { cn } from "@/lib/utils";
@@ -42,15 +37,18 @@ type Props = {
   name: string;
   status: "active" | "completed";
   planChanged: boolean;
+  savedList: { id: string; name: string } | null;
   initialItems: ListItem[];
   aisleOrder: Aisle[];
   memberNames: Record<string, string>;
 };
 
 /** E2/E3: aisle groups, check-off shared between phones by polling, manual items, sources. */
-export function ShoppingList({ listId, name, status, planChanged, initialItems, aisleOrder, memberNames }: Props) {
+export function ShoppingList({ listId, name, status, planChanged, savedList, initialItems, aisleOrder, memberNames }: Props) {
   const [items, setItems] = useState(initialItems);
   const [openId, setOpenId] = useState<string | null>(null);
+  // Deleted on the other phone: stop polling and say so.
+  const [gone, setGone] = useState(false);
   const [, startTransition] = useTransition();
   // Items with a write in flight: polls leave them alone until the server answers.
   const pending = useRef(new Set<string>());
@@ -64,6 +62,7 @@ export function ShoppingList({ listId, name, status, planChanged, initialItems, 
   const poll = useCallback(async () => {
     const url = `/api/lists/${listId}/items${since.current ? `?since=${encodeURIComponent(since.current)}` : ""}`;
     const res = await fetch(url, { cache: "no-store" }).catch(() => null);
+    if (res?.status === 404) setGone(true);
     if (!res?.ok) return;
     const data: { now: string; items: ListItem[]; ids: string[] } = await res.json();
     // Look back 2 s so a write that lands as we read isn't skipped.
@@ -86,6 +85,7 @@ export function ShoppingList({ listId, name, status, planChanged, initialItems, 
 
   // Poll while the list is on screen, and right away when it comes back.
   useEffect(() => {
+    if (gone) return;
     const timer = setInterval(() => {
       if (document.visibilityState === "visible") void poll();
     }, live ? LIVE_POLL_MS : POLL_MS);
@@ -97,11 +97,11 @@ export function ShoppingList({ listId, name, status, planChanged, initialItems, 
       clearInterval(timer);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [poll, live]);
+  }, [poll, live, gone]);
 
   const onLiveChange = useCallback(() => void poll(), [poll]);
 
-  useWakeLock(status === "active");
+  useWakeLock(status === "active" && !gone);
 
   function toggle(item: ListItem) {
     const checked = !item.isChecked;
@@ -138,20 +138,40 @@ export function ShoppingList({ listId, name, status, planChanged, initialItems, 
   const groups = useMemo(() => groupItems(items, aisleOrder), [items, aisleOrder]);
   const checkedCount = items.filter((i) => i.isChecked).length;
   const open = items.find((i) => i.id === openId) ?? null;
+  const back = { href: listsHref(tabForStatus(status)), label: "Lists" };
+
+  if (gone) {
+    return (
+      <>
+        <PageHeader title={name} back={back} />
+        <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col items-center p-4">
+          <EmptyState icon={<Trash2 className="size-7" />} title="This list was deleted">
+            It was deleted on another phone, so there&apos;s nothing left to check off here.
+          </EmptyState>
+          <Button asChild size="lg">
+            <Link href={listsHref("active")}>Back to lists</Link>
+          </Button>
+        </main>
+      </>
+    );
+  }
 
   return (
     <>
       <LiveSignal sealUrl="/api/realtime/grocery-items" body={{ listId }} onChange={onLiveChange} onLive={setLive} />
       <PageHeader
         title={name}
-        back={{ href: "/lists", label: "Lists" }}
-        action={<ListMenu listId={listId} status={status} />}
+        back={back}
+        action={
+          <ListActionsMenu where="list" list={{ id: listId, name, status, itemCount: items.length, savedList }} />
+        }
       />
       <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-4 p-4">
         <p className="text-sm text-muted-foreground" aria-live="polite">
-          {status === "completed" ? "Done. " : ""}
           {checkedCount} of {items.length} checked
         </p>
+
+        {status === "completed" ? <DoneBanner listId={listId} name={name} savedList={savedList} /> : null}
 
         {planChanged ? <PlanChangedBanner listId={listId} /> : null}
 
@@ -225,6 +245,40 @@ export function ShoppingList({ listId, name, status, planChanged, initialItems, 
   );
 }
 
+/** Shown once the list is done: it lives in History now, and can be saved to reorder. */
+function DoneBanner({ listId, name, savedList }: { listId: string; name: string; savedList: { id: string; name: string } | null }) {
+  const [saving, setSaving] = useState(false);
+  return (
+    <div role="status" className="flex flex-col gap-2 rounded-xl bg-primary/10 p-3 text-sm" data-testid="done-banner">
+      <p className="flex items-start gap-2">
+        <CheckCheck className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden />
+        <span>
+          <strong>Done shopping.</strong> This list is in History now, out of the way.{" "}
+          {savedList ? (
+            <>
+              Its meals are saved as &ldquo;{savedList.name}&rdquo; under Reorder.
+            </>
+          ) : (
+            "Shopping for these meals again? Save them to reorder in one tap."
+          )}
+        </span>
+      </p>
+      {savedList ? (
+        <Button asChild variant="outline">
+          <Link href={listsHref("reorder")}>
+            <BookmarkCheck aria-hidden /> Go to Reorder
+          </Link>
+        </Button>
+      ) : (
+        <Button onClick={() => setSaving(true)}>
+          <Bookmark aria-hidden /> Save for reorder
+        </Button>
+      )}
+      <SaveListDialog open={saving} onOpenChange={setSaving} listId={listId} listName={name} savedList={savedList} />
+    </div>
+  );
+}
+
 /** PRD 8.4: the plan behind this list changed since it was made. */
 function PlanChangedBanner({ listId }: { listId: string }) {
   const router = useRouter();
@@ -272,35 +326,6 @@ function useWakeLock(enabled: boolean) {
       void lock?.release();
     };
   }, [enabled]);
-}
-
-function ListMenu({ listId, status }: { listId: string; status: "active" | "completed" }) {
-  const [, startTransition] = useTransition();
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon" aria-label="List actions">
-          <EllipsisVertical className="size-6" aria-hidden />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="min-w-44">
-        <DropdownMenuItem asChild>
-          <Link href={`/lists/${listId}/print`}>
-            <Printer aria-hidden /> Print
-          </Link>
-        </DropdownMenuItem>
-        {status === "active" ? (
-          <DropdownMenuItem onSelect={() => startTransition(() => setListStatusAction(listId, "completed"))}>
-            <Check aria-hidden /> Done shopping
-          </DropdownMenuItem>
-        ) : (
-          <DropdownMenuItem onSelect={() => startTransition(() => setListStatusAction(listId, "active"))}>
-            <RotateCcw aria-hidden /> Reopen list
-          </DropdownMenuItem>
-        )}
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
 }
 
 function AddItem({ listId, onAdded }: { listId: string; onAdded: (item: ListItem) => void }) {

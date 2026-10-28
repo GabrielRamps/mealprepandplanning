@@ -243,6 +243,63 @@ export const mealPlanEntries = pgTable(
   ],
 );
 
+// Saved lists (Lists → Reorder): the meals and extra items of a list, kept so
+// the same week can be shopped for again in one tap.
+export const savedLists = pgTable(
+  "saved_lists",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    householdId: uuid("household_id")
+      .notNull()
+      .references(() => households.id, { onDelete: "cascade" }),
+    name: text("name").notNull(), // 'Taco week'
+    createdBy: text("created_by").notNull(),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+    lastOrderedAt: timestamp("last_ordered_at", { withTimezone: true }),
+  },
+  (t) => [
+    check("saved_lists_name_length", sql`char_length(${t.name}) between 1 and 80`),
+    index("saved_lists_household").on(t.householdId),
+  ],
+);
+
+export const savedListRecipes = pgTable(
+  "saved_list_recipes",
+  {
+    savedListId: uuid("saved_list_id")
+      .notNull()
+      .references(() => savedLists.id, { onDelete: "cascade" }),
+    recipeId: uuid("recipe_id")
+      .notNull()
+      .references(() => recipes.id),
+    servings: numeric("servings", { precision: 6, scale: 2, mode: "number" }).notNull(),
+    position: integer("position").notNull().default(0),
+  },
+  (t) => [
+    primaryKey({ columns: [t.savedListId, t.recipeId] }),
+    check("saved_list_recipes_servings", sql`${t.servings} > 0`),
+  ],
+);
+
+/** Items added by hand to the list it was saved from ('paper towels'). */
+export const savedListItems = pgTable(
+  "saved_list_items",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    savedListId: uuid("saved_list_id")
+      .notNull()
+      .references(() => savedLists.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    quantity: numeric("quantity", { precision: 10, scale: 3, mode: "number" }),
+    unit: text("unit"),
+    aisle: aisle("aisle").notNull().default("other"),
+    isPantry: boolean("is_pantry").notNull().default(false),
+    position: integer("position").notNull().default(0),
+  },
+  (t) => [index("saved_list_items_saved_list").on(t.savedListId)],
+);
+
 export const groceryLists = pgTable(
   "grocery_lists",
   {
@@ -252,6 +309,8 @@ export const groceryLists = pgTable(
       .references(() => households.id, { onDelete: "cascade" }),
     name: text("name").notNull(), // 'Week of Oct 26'
     mealPlanId: uuid("meal_plan_id").references(() => mealPlans.id, { onDelete: "set null" }),
+    // The saved list this list was saved as, or reordered from.
+    savedListId: uuid("saved_list_id").references(() => savedLists.id, { onDelete: "set null" }),
     status: text("status").notNull().default("active"),
     createdBy: text("created_by").notNull(),
     createdAt: createdAt(),

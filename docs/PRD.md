@@ -209,7 +209,7 @@ A bottom tab bar with four tabs: **Recipes, Plan, Lists, Import**. Settings sits
 | `/recipes/[id]` | Recipe detail | Cover, servings stepper, ingredients by section, steps, source link, ratings, favorite, tags, actions menu (edit, add to plan, add to list, didn't like, archive, delete) |
 | `/recipes/[id]/edit` | Edit recipe | Recipe editor |
 | `/plan` and `/plan/[weekStart]` | Week plan | Status banner, 7 day cards with 4 meal slots, add-recipe sheet, Send / Approve / Request changes, Make grocery list |
-| `/lists` | Lists | Active lists first, then completed; New list button |
+| `/lists` | Lists | Active / Reorder / History buttons at the top (`?tab=`); Active: lists in progress; Reorder: saved lists with a one-tap Reorder button; History: done lists. Each list has a ⋯ menu (done or reopen, save for reorder, delete with confirmation); New list button |
 | `/lists/new` | New list | Recipe picker with servings per recipe |
 | `/lists/[id]` | Shopping view | Aisle groups, big tap targets, checked items sink, add item field, pantry section, print link |
 | `/lists/[id]/print` | Print view | Two columns, no chrome |
@@ -389,6 +389,33 @@ create table grocery_items (
   updated_at timestamptz not null default now()
 );
 create index on grocery_items (list_id);
+
+-- Lists → Reorder: a list's recipes, servings and hand-added items, kept to shop for again
+create table saved_lists (
+  id uuid primary key default gen_random_uuid(),
+  household_id uuid not null references households(id) on delete cascade,
+  name text not null check (char_length(name) between 1 and 80),
+  created_by text not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  last_ordered_at timestamptz
+);
+create table saved_list_recipes (
+  saved_list_id uuid not null references saved_lists(id) on delete cascade,
+  recipe_id uuid not null references recipes(id),
+  servings numeric(6,2) not null check (servings > 0),
+  position integer not null default 0,
+  primary key (saved_list_id, recipe_id)
+);
+create table saved_list_items (
+  id uuid primary key default gen_random_uuid(),
+  saved_list_id uuid not null references saved_lists(id) on delete cascade,
+  name text not null, quantity numeric(10,3), unit text,
+  aisle aisle not null default 'other', is_pantry boolean not null default false,
+  position integer not null default 0
+);
+-- grocery_lists.saved_list_id uuid references saved_lists(id) on delete set null:
+-- the saved list a list was saved as, or reordered from
 
 create table import_jobs (
   id uuid primary key default gen_random_uuid(),

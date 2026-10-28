@@ -1,6 +1,7 @@
 # Meal Prep & Planning
 
-Private household meal planner. Spec: [docs/PRD.md](docs/PRD.md).
+Private household meal planner. Spec: [docs/PRD.md](docs/PRD.md). What
+changed and when: [CHANGELOG.md](CHANGELOG.md).
 
 Next.js 16 (App Router) on Vercel, with Neon for Postgres, Auth (Managed Better
 Auth), Object Storage and Realtime. Services are declared in [`neon.ts`](neon.ts).
@@ -58,6 +59,26 @@ have" group.
 | `npm run lint` / `typecheck` / `test` | ESLint, `tsc`, Vitest |
 | `npm run db:generate` | New migration from `lib/db/schema.ts` |
 | `npm run db:migrate` | Apply migrations (direct connection) |
+
+## Migrations and deploys
+
+The Vercel build is plain `next build`; it doesn't run migrations. Before
+merging a change that adds one, run `npm run db:migrate` against production
+(`DATABASE_URL_UNPOOLED` from the Neon project's production branch; add
+`DATABASE_DRIVER=neon-http` where outbound TCP is blocked). Keep migrations
+additive so the live app keeps working in between. Each preview deploy gets its
+own Neon branch, copied from production when the branch is first deployed.
+
+## Tests
+
+`npm test` runs the unit tests. `lib/grocery/lists.db.test.ts` also exercises
+lists, saved lists and deletes against a real database, and only runs with
+`TEST_DATABASE_URL` set to a throwaway database with migrations applied (a
+schema-only Neon branch works; never production):
+
+```bash
+TEST_DATABASE_URL=postgres://… DATABASE_DRIVER=neon-http npm test
+```
 
 ## Deviations from the PRD
 

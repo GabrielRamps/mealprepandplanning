@@ -120,16 +120,34 @@ function sumPicks(picks: Pick[]): Map<string, number> {
   return out;
 }
 
-/** createListFromRecipes / createListFromPlan (PRD 9.2): build, then save list, sources and items together. */
+/** An item added by hand, carried over from a saved list. */
+export type ExtraItem = {
+  name: string;
+  quantity: number | null;
+  unit: string | null;
+  aisle: Aisle;
+  isPantry: boolean;
+};
+
+/**
+ * createListFromRecipes / createListFromPlan (PRD 9.2), and reordering a saved
+ * list: build, then save list, sources and items together. Missing recipes
+ * fail, unless the picks come from a plan or a saved list, which keep recipes
+ * that were deleted later.
+ */
 export async function createList(input: {
   householdId: string;
   userId: string;
   name: string;
   picks: Pick[];
   mealPlanId?: string | null;
+  savedListId?: string | null;
+  extraItems?: ExtraItem[];
 }): Promise<string> {
-  const requests = await requestsFor(input.householdId, input.picks, Boolean(input.mealPlanId));
+  const skipMissing = Boolean(input.mealPlanId || input.savedListId);
+  const requests = await requestsFor(input.householdId, input.picks, skipMissing);
   const items = buildList(requests);
+  const extras = input.extraItems ?? [];
   const servingsByRecipe = sumPicks(requests.map((r) => ({ recipeId: r.recipe.id, servings: r.servings })));
 
   const listId = crypto.randomUUID();
@@ -139,6 +157,7 @@ export async function createList(input: {
       householdId: input.householdId,
       name: input.name,
       mealPlanId: input.mealPlanId ?? null,
+      savedListId: input.savedListId ?? null,
       createdBy: input.userId,
     }),
     ...(servingsByRecipe.size
@@ -148,10 +167,10 @@ export async function createList(input: {
             .values([...servingsByRecipe].map(([recipeId, servings]) => ({ listId, recipeId, servings }))),
         ]
       : []),
-    ...(items.length
+    ...(items.length || extras.length
       ? [
-          q.insert(groceryItems).values(
-            items.map((i, position) => ({
+          q.insert(groceryItems).values([
+            ...items.map((i, position) => ({
               listId,
               ingredientId: i.ingredientId,
               mergeKey: i.mergeKey,
@@ -163,7 +182,18 @@ export async function createList(input: {
               sources: i.sources,
               position,
             })),
-          ),
+            // Hand-added items sit after recipe items, as in addManualItem.
+            ...extras.map((e, i) => ({
+              listId,
+              name: e.name,
+              quantity: e.quantity,
+              unit: isUnitCode(e.unit) ? e.unit : null,
+              aisle: e.aisle,
+              isPantry: e.isPantry,
+              isManual: true,
+              position: 10_000 + i,
+            })),
+          ]),
         ]
       : []),
   ]);
@@ -173,37 +203,75 @@ export async function createList(input: {
 // ---------------------------------------------------------------------------
 // Reads
 
+export type ListStatus = "active" | "completed";
+
 export type ListSummary = {
   id: string;
   name: string;
-  status: "active" | "completed";
+  status: ListStatus;
   createdAt: Date;
+  completedAt: Date | null;
   total: number;
   checked: number;
+  /** The saved list in Reorder this list is linked to. */
+  savedList: { id: string; name: string } | null;
 };
 
-export async function listLists(householdId: string): Promise<ListSummary[]> {
+/** The saved list a list is linked to, checked to be in the same household. */
+const linkedSavedList = and(
+  eq(schema.savedLists.id, groceryLists.savedListId),
+  eq(schema.savedLists.householdId, groceryLists.householdId),
+);
+
+/** One status's lists: active newest first, done (History) most recently finished first. */
+export async function listLists(householdId: string, status: ListStatus, limit = 100): Promise<ListSummary[]> {
   const rows = await getDb()
     .select({
       id: groceryLists.id,
       name: groceryLists.name,
-      status: groceryLists.status,
       createdAt: groceryLists.createdAt,
+      completedAt: groceryLists.completedAt,
+      savedListId: schema.savedLists.id,
+      savedListName: schema.savedLists.name,
       total: sql<number>`(select count(*) from ${groceryItems} gi where gi.list_id = ${groceryLists.id})`.mapWith(Number),
       checked: sql<number>`(select count(*) from ${groceryItems} gi where gi.list_id = ${groceryLists.id} and gi.is_checked)`.mapWith(Number),
     })
     .from(groceryLists)
-    .where(eq(groceryLists.householdId, householdId))
-    .orderBy(asc(sql`${groceryLists.status} = 'completed'`), desc(groceryLists.createdAt))
-    .limit(100);
-  return rows.map((r) => ({ ...r, status: r.status === "completed" ? "completed" : "active" }));
+    .leftJoin(schema.savedLists, linkedSavedList)
+    .where(and(eq(groceryLists.householdId, householdId), eq(groceryLists.status, status)))
+    .orderBy(
+      ...(status === "completed" ? [sql`${groceryLists.completedAt} desc nulls last`] : []),
+      desc(groceryLists.createdAt),
+    )
+    .limit(limit);
+  return rows.map(({ savedListId, savedListName, ...r }) => ({
+    ...r,
+    status,
+    savedList: savedListId && savedListName ? { id: savedListId, name: savedListName } : null,
+  }));
+}
+
+export type ListCounts = { active: number; history: number; saved: number };
+
+/** Badge counts for the Active, Reorder and History buttons. */
+export async function listCounts(householdId: string): Promise<ListCounts> {
+  const [row] = await getDb()
+    .select({
+      active: sql<number>`count(*) filter (where ${groceryLists.status} = 'active')`.mapWith(Number),
+      history: sql<number>`count(*) filter (where ${groceryLists.status} = 'completed')`.mapWith(Number),
+      saved: sql<number>`(select count(*) from ${schema.savedLists} sl where sl.household_id = ${householdId})`.mapWith(Number),
+    })
+    .from(groceryLists)
+    .where(eq(groceryLists.householdId, householdId));
+  return row ?? { active: 0, history: 0, saved: 0 };
 }
 
 export type ListDetail = {
   id: string;
   name: string;
-  status: "active" | "completed";
+  status: ListStatus;
   mealPlanId: string | null;
+  savedList: { id: string; name: string } | null;
   aisleOrder: Aisle[];
   items: ListItem[];
 };
@@ -219,18 +287,23 @@ export async function getList(householdId: string, listId: string): Promise<List
         name: groceryLists.name,
         status: groceryLists.status,
         mealPlanId: groceryLists.mealPlanId,
+        savedListId: schema.savedLists.id,
+        savedListName: schema.savedLists.name,
         aisleOrder: households.aisleOrder,
       })
       .from(groceryLists)
       .innerJoin(households, eq(households.id, groceryLists.householdId))
+      .leftJoin(schema.savedLists, linkedSavedList)
       .where(and(eq(groceryLists.id, listId), eq(groceryLists.householdId, householdId)))
       .limit(1),
     db.select().from(groceryItems).where(eq(groceryItems.listId, listId)).orderBy(asc(groceryItems.position)),
   ]);
   if (!list) return null;
+  const { savedListId, savedListName, ...rest } = list;
   return {
-    ...list,
+    ...rest,
     status: list.status === "completed" ? "completed" : "active",
+    savedList: savedListId && savedListName ? { id: savedListId, name: savedListName } : null,
     items: itemRows.map(toItem),
   };
 }
@@ -340,11 +413,26 @@ export async function deleteItem(listId: string, itemId: string): Promise<void> 
     .where(and(eq(groceryItems.id, itemId), eq(groceryItems.listId, listId)));
 }
 
-export async function setListStatus(householdId: string, listId: string, status: "active" | "completed"): Promise<void> {
+export async function setListStatus(householdId: string, listId: string, status: ListStatus): Promise<void> {
   await getDb()
     .update(groceryLists)
     .set({ status, completedAt: status === "completed" ? new Date() : null })
     .where(and(eq(groceryLists.id, listId), eq(groceryLists.householdId, householdId)));
+}
+
+/**
+ * Deletes a list for good; its items and recipe rows go with it (on delete
+ * cascade). A saved list made from it stays in Reorder. Returns the status it
+ * had, or null when there was no such list in this household.
+ */
+export async function deleteList(householdId: string, listId: string): Promise<ListStatus | null> {
+  if (!isUuid(listId)) return null;
+  const [row] = await getDb()
+    .delete(groceryLists)
+    .where(and(eq(groceryLists.id, listId), eq(groceryLists.householdId, householdId)))
+    .returning({ status: groceryLists.status });
+  if (!row) return null;
+  return row.status === "completed" ? "completed" : "active";
 }
 
 // ---------------------------------------------------------------------------
