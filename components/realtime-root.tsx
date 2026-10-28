@@ -16,7 +16,16 @@ export function useRealtimeAvailable(): boolean {
 // renders; screens fall back to polling.
 export function RealtimeRoot({ children }: { children: ReactNode }) {
   const url = process.env.NEXT_PUBLIC_NEON_REALTIME_URL;
-  const [client] = useState(() => (url ? createRealtimeClient({ url }) : null));
+  const [client] = useState(() => {
+    if (!url) return null;
+    try {
+      return createRealtimeClient({ url });
+    } catch (err) {
+      // Live sync is an extra; without it screens poll.
+      console.warn("Realtime unavailable", err);
+      return null;
+    }
+  });
   if (!client) return <>{children}</>;
   return (
     <RealtimeProvider client={client}>
