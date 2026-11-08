@@ -5,6 +5,7 @@ import { isUniqueViolation } from "@/lib/db/errors";
 import { localToday } from "@/lib/plan/week";
 import { buildSeed, SEED_SETTINGS } from "@/lib/prep/seed-data";
 import { canonicalName } from "@/lib/recipe-draft";
+import { omit } from "@/lib/utils";
 
 const {
   prepSettings,
@@ -69,8 +70,8 @@ export async function seedPrep(householdId: string, userId: string): Promise<boo
       ...(newIngredients.length ? [q.insert(ingredients).values(newIngredients)] : []),
       q.insert(prepEaters).values(rows.eaters.map((e) => ({ ...e, householdId }))),
       q.insert(coreFoods).values(
-        rows.foods.map(({ aisle: _aisle, ...f }) => ({
-          ...f,
+        rows.foods.map((f) => ({
+          ...omit(f, "aisle"),
           householdId,
           ingredientId: ingredientIds.get(canonicalName(f.name))!,
           priceIsEstimate: true,
@@ -86,8 +87,8 @@ export async function seedPrep(householdId: string, userId: string): Promise<boo
           createdBy: userId,
         })),
       ),
-      q.insert(coreMeals).values(rows.meals.map(({ key: _key, ...m }) => ({ ...m, householdId }))),
-      q.insert(coreMealComponents).values(rows.components.map(({ key: _key, ...c }) => c)),
+      q.insert(coreMeals).values(rows.meals.map((m) => ({ ...omit(m, "key"), householdId }))),
+      q.insert(coreMealComponents).values(rows.components.map((c) => omit(c, "key"))),
       q.insert(coreMealPortions).values(rows.portions),
       q.insert(prepTemplates).values(rows.templates.map((t) => ({ ...t, householdId }))),
       q.insert(prepTemplateMeals).values(rows.templateMeals),

@@ -13,6 +13,7 @@ const { groceryLists, groceryListRecipes, groceryItems, recipes, recipeIngredien
 export type ListItem = {
   id: string;
   ingredientId: string | null;
+  mergeKey: string | null;
   name: string;
   quantity: number | null;
   unit: UnitCode | null;
@@ -35,6 +36,7 @@ function toItem(row: ItemRow): ListItem {
   return {
     id: row.id,
     ingredientId: row.ingredientId,
+    mergeKey: row.mergeKey,
     name: row.name,
     quantity: row.quantity,
     unit: isUnitCode(row.unit) ? row.unit : null,

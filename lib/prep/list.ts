@@ -4,6 +4,7 @@ import { atomic, getDb, schema } from "@/lib/db";
 import { weekListName } from "@/lib/plan/week";
 import { type Catalog, foodsByIngredient, type LoadedWeek } from "@/lib/prep/load";
 import { type PrepItem, prepListItems } from "@/lib/prep/list-items";
+import { omit } from "@/lib/utils";
 
 // makePrepList / updatePrepList (PRD-prep P-8), following the insert pattern
 // of createList and the update rules of PRD 8.4.
@@ -101,7 +102,7 @@ export async function updatePrepList(catalog: Catalog, loaded: LoadedWeek, listI
     ...built
       .filter((b) => existing.has(b.mergeKey))
       .map((b, n) => {
-        const { listId: _l, position: _p, mergeKey: _k, ...patch } = row(listId, b, n);
+        const patch = omit(row(listId, b, n), "listId", "position", "mergeKey");
         return q
           .update(groceryItems)
           .set({ ...patch, updatedAt: now })

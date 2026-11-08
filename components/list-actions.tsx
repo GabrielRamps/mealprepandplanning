@@ -1,6 +1,6 @@
 "use client";
 
-import { Bookmark, BookmarkCheck, Check, EllipsisVertical, Printer, RotateCcw, Trash2 } from "lucide-react";
+import { Bookmark, BookmarkCheck, Check, ClipboardCopy, EllipsisVertical, Printer, RotateCcw, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useState, useTransition } from "react";
 import { deleteListAction, saveListAction, setListStatusAction } from "@/app/(app)/lists/actions";
@@ -43,8 +43,18 @@ const itemClass = "min-h-11 text-base";
  * Lists screen (`where="lists"`) a done or reopened list leaves the view; on
  * the list itself it stays on screen and Print is offered too.
  */
-export function ListActionsMenu({ list, where }: { list: ListActionsTarget; where: "lists" | "list" }) {
+export function ListActionsMenu({
+  list,
+  where,
+  copyText,
+}: {
+  list: ListActionsTarget;
+  where: "lists" | "list";
+  /** The list as plain text, for Copy list (on the list itself). */
+  copyText?: () => string;
+}) {
   const [dialog, setDialog] = useState<"save" | "delete" | null>(null);
+  const [copied, setCopied] = useState<"yes" | "failed" | null>(null);
   const [pending, startTransition] = useTransition();
   const backToLists = where === "lists";
 
@@ -68,6 +78,20 @@ export function ListActionsMenu({ list, where }: { list: ListActionsTarget; wher
               <Link href={`/lists/${list.id}/print`}>
                 <Printer aria-hidden /> Print
               </Link>
+            </DropdownMenuItem>
+          ) : null}
+          {copyText ? (
+            <DropdownMenuItem
+              className={itemClass}
+              onSelect={() => {
+                navigator.clipboard.writeText(copyText()).then(
+                  () => setCopied("yes"),
+                  () => setCopied("failed"),
+                );
+                setTimeout(() => setCopied(null), 2500);
+              }}
+            >
+              <ClipboardCopy aria-hidden /> Copy list
             </DropdownMenuItem>
           ) : null}
           {list.status === "active" ? (
@@ -96,6 +120,11 @@ export function ListActionsMenu({ list, where }: { list: ListActionsTarget; wher
         </DropdownMenuContent>
       </DropdownMenu>
 
+      {copied ? (
+        <span role="status" className="fixed inset-x-0 top-[calc(4rem+env(safe-area-inset-top))] z-30 mx-auto w-fit rounded-full bg-foreground px-4 py-2 text-sm text-background shadow">
+          {copied === "yes" ? "List copied" : "Couldn't copy. Try again."}
+        </span>
+      ) : null}
       <SaveListDialog
         open={dialog === "save"}
         onOpenChange={(open) => setDialog(open ? "save" : null)}

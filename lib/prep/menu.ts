@@ -7,6 +7,7 @@ import { localToday, weekStartOf } from "@/lib/plan/week";
 import type { Catalog, EaterRecord } from "@/lib/prep/load";
 import type { CoreFoodData, CoreMealData, EaterData, SettingsData } from "@/lib/prep/validation";
 import { canonicalName } from "@/lib/recipe-draft";
+import { omit } from "@/lib/utils";
 
 // Menu writes (PRD-prep P-2, P-3, P-4, P-10, P-13): foods with price history,
 // meals with components and portions, eaters, settings and templates.
@@ -63,7 +64,7 @@ export async function upsertCoreFood(
   const priceChanged = !before || before.packagePriceCents !== input.packagePriceCents || Math.abs(before.packageAmount - input.packageAmount) > 0.005;
   const id = before?.id ?? crypto.randomUUID();
   const now = new Date();
-  const { id: _id, aisle: _aisle, ...fields } = input;
+  const fields = omit(input, "id", "aisle");
   const values = {
     ...fields,
     ingredientId,
@@ -124,10 +125,10 @@ async function upcomingWeekMeals(householdId: string) {
 }
 
 function usedText(meals: string[], weeks: number): string {
-  const parts: string[] = [];
-  if (meals.length) parts.push(meals.length <= 2 ? meals.join(" and ") : `${meals.slice(0, 2).join(", ")} and ${meals.length - 2} more`);
+  const parts = meals.length > 3 ? [...meals.slice(0, 2), `${meals.length - 2} more meals`] : [...meals];
   if (weeks) parts.push(`${weeks} week${weeks === 1 ? "" : "s"}`);
-  return `Used in ${parts.join(" and ")}. Swap it out first.`;
+  const list = parts.length > 1 ? `${parts.slice(0, -1).join(", ")} and ${parts.at(-1)}` : parts[0];
+  return `Used in ${list}. Swap it out first.`;
 }
 
 /** deleteCoreFood: soft delete, refused while a meal or an upcoming week uses it (P-2). */

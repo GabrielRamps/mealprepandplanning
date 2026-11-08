@@ -21,6 +21,7 @@ import {
   upsertCoreFood,
 } from "@/lib/prep/menu";
 import { weekView } from "@/lib/prep/pages";
+import { applyReceiptScan, ScanError, startReceiptScan } from "@/lib/prep/receipts";
 import { seedPrep, SetupError } from "@/lib/prep/seed";
 import {
   CoreFoodInput,
@@ -387,5 +388,48 @@ export async function addRecipeToPrepWeekAction(input: z.input<typeof AddRecipe>
     return { weekStart };
   } catch (err) {
     return menuError(err);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Receipt scan (P-11)
+
+/** startReceiptScan: 1–4 photos; reading happens after the response. */
+export async function startReceiptScanAction(formData: FormData): Promise<ActionResult & { scanId?: string }> {
+  const { userId, householdId } = await requireCatalog();
+  const files = formData.getAll("images").filter((f): f is File => f instanceof File);
+  try {
+    const scanId = await startReceiptScan(householdId, userId, files);
+    return { scanId };
+  } catch (err) {
+    if (err instanceof ScanError) return { error: err.message };
+    throw err;
+  }
+}
+
+const ApplyLines = z
+  .array(
+    z.object({
+      lineIndex: z.number().int().min(0).max(149),
+      coreFoodId: z.uuid(),
+      packagePriceCents: z.number().int().min(0).max(100_000),
+      packageAmount: z.number().gt(0).max(100_000),
+    }),
+  )
+  .min(1, "Tick at least one price to apply")
+  .max(150);
+
+/** applyReceiptScan: the ticked lines' prices onto their foods. */
+export async function applyReceiptScanAction(scanId: string, lines: z.input<typeof ApplyLines>): Promise<ActionResult & { updated?: number }> {
+  const { userId, householdId } = await requireCatalog();
+  const parsed = ApplyLines.safeParse(lines);
+  if (!parsed.success) return { error: first(parsed.error) };
+  try {
+    const updated = await applyReceiptScan(householdId, userId, scanId, parsed.data);
+    refreshPrep();
+    return { updated };
+  } catch (err) {
+    if (err instanceof ScanError) return { error: err.message };
+    throw err;
   }
 }

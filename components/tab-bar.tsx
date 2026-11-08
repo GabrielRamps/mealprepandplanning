@@ -1,6 +1,6 @@
 "use client";
 
-import { BookOpen, CalendarDays, Download, ShoppingCart, type LucideIcon } from "lucide-react";
+import { BookOpen, CalendarDays, ChefHat, Download, ShoppingCart, type LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -8,8 +8,9 @@ import { cn } from "@/lib/utils";
 
 type Tab = { href: string; label: string; icon: LucideIcon; alsoActiveFor?: string[] };
 
-// PRD 5: four tabs; Settings opens from the Recipes header, so it lights Recipes.
+// PRD 5 plus Prep (PRD-prep 5), first; Settings opens from the Recipes header, so it lights Recipes.
 const TABS: Tab[] = [
+  { href: "/prep", label: "Prep", icon: ChefHat },
   { href: "/recipes", label: "Recipes", icon: BookOpen, alsoActiveFor: ["/settings"] },
   { href: "/plan", label: "Plan", icon: CalendarDays },
   { href: "/lists", label: "Lists", icon: ShoppingCart },
@@ -59,7 +60,7 @@ export function TabBar() {
       aria-label="Main"
       className="fixed inset-x-0 bottom-0 z-20 border-t bg-background/95 pb-[env(safe-area-inset-bottom)] backdrop-blur print:hidden"
     >
-      <ul className="mx-auto grid h-16 max-w-2xl grid-cols-4">
+      <ul className="mx-auto grid h-16 max-w-2xl grid-cols-5">
         {TABS.map((tab) => {
           const active = isActive(pathname, tab);
           const Icon = tab.icon;
@@ -74,7 +75,7 @@ export function TabBar() {
                 )}
               >
                 <span className="relative">
-                  <Icon className="size-6" strokeWidth={active ? 2.25 : 1.75} aria-hidden />
+                  <Icon className="size-[22px]" strokeWidth={active ? 2.25 : 1.75} aria-hidden />
                   {tab.href === "/plan" && waiting > 0 ? (
                     <span
                       className="absolute -top-1.5 -right-2.5 flex min-w-5 items-center justify-center rounded-full bg-red-600 px-1 text-[0.7rem] leading-5 font-semibold text-white"

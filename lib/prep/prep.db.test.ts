@@ -176,7 +176,8 @@ describe.skipIf(!url)("prep (database)", async () => {
     const c = await catalog();
     const breast = [...c.foods.values()].find((f) => f.name === "Chicken breast")!;
     const result = await menu.deleteCoreFood(householdId, c, breast.id);
-    expect(result.error).toMatch(/^Used in Lunch bowl and Dinner plate/);
+    // Plus any of this test's weeks still ahead of today.
+    expect(result.error).toMatch(/^Used in Lunch bowl(, Dinner plate and \d+ weeks?| and Dinner plate)\. Swap it out first\.$/);
     const coleslaw = [...c.foods.values()].find((f) => f.name === "Coleslaw mix")!;
     expect(await menu.deleteCoreFood(householdId, c, coleslaw.id)).toEqual({});
     expect((await catalog()).foods.get(coleslaw.id)!.deleted).toBe(true);

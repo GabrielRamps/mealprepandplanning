@@ -78,3 +78,33 @@ export function planLiveQuery(userId: string, weekStart: string) {
     [userId, weekStart],
   );
 }
+
+/** Row shape of a live Prep week: any edit bumps updated_at. */
+export type LivePrepWeek = { id: string; updated_at: string; list_built_at: string | null };
+
+/** The household's Prep week starting on a Monday (empty before it exists). */
+export function prepWeekLiveQuery(userId: string, weekStart: string) {
+  return rawSql<LivePrepWeek>(
+    `SELECT pw.id, pw.updated_at, pw.list_built_at
+     FROM prep_weeks pw
+     INNER JOIN household_members hm ON hm.household_id = pw.household_id
+     WHERE hm.user_id = $1 AND pw.week_start = $2::date`,
+    [userId, weekStart],
+  );
+}
+
+/** Row shape of a live task check-off. */
+export type LivePrepCheck = { prep_week_id: string; task_key: string; checked_by: string; checked_at: string };
+
+/** Task check-offs on the household's Prep weeks starting between two Mondays (Today shows up to two). */
+export function prepChecksLiveQuery(userId: string, fromWeek: string, toWeek: string) {
+  return rawSql<LivePrepCheck>(
+    `SELECT ptc.prep_week_id, ptc.task_key, ptc.checked_by, ptc.checked_at
+     FROM prep_task_checks ptc
+     INNER JOIN prep_weeks pw ON pw.id = ptc.prep_week_id
+     INNER JOIN household_members hm ON hm.household_id = pw.household_id
+     WHERE hm.user_id = $1 AND pw.week_start BETWEEN $2::date AND $3::date
+     ORDER BY ptc.prep_week_id, ptc.task_key`,
+    [userId, fromWeek, toWeek],
+  );
+}
