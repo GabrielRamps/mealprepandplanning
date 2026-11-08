@@ -28,6 +28,8 @@ export type ItemSource = {
   unit: string | null;
   raw_text: string;
   optional: boolean;
+  /** Prep items: a meal and day ('Lunch bowl · Mon'), quantity in grams. */
+  kind?: "prep";
 };
 
 export type BuiltItem = {

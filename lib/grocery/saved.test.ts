@@ -9,13 +9,13 @@ describe("reorderContents", () => {
         { recipeId: "r2", title: "Old soup", servings: 2, available: false },
         { recipeId: "r3", title: "Pasta", servings: 2.5, available: true },
       ],
-      items: [{ name: "paper towels", quantity: null, unit: null, aisle: "household", isPantry: false }],
+      items: [{ name: "paper towels", quantity: null, unit: null, aisle: "household", isPantry: false, note: null, priceCents: null }],
     });
     expect(out.picks).toEqual([
       { recipeId: "r1", servings: 4 },
       { recipeId: "r3", servings: 2.5 },
     ]);
-    expect(out.extraItems).toEqual([{ name: "paper towels", quantity: null, unit: null, aisle: "household", isPantry: false }]);
+    expect(out.extraItems).toEqual([{ name: "paper towels", quantity: null, unit: null, aisle: "household", isPantry: false, note: null, priceCents: null }]);
     expect(out.skipped).toEqual(["Old soup"]);
   });
 

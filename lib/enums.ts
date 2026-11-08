@@ -43,3 +43,39 @@ export type RecipeSource = (typeof RECIPE_SOURCES)[number];
 
 export const RECIPE_STATUSES = ["active", "disliked", "archived"] as const;
 export type RecipeStatus = (typeof RECIPE_STATUSES)[number];
+
+// Prep (PRD-prep 7.1).
+export const CORE_FOOD_CATEGORIES = [
+  "protein",
+  "starch",
+  "vegetable",
+  "fruit",
+  "dairy_eggs",
+  "grain",
+  "fat",
+  "flavor",
+  "supplement",
+  "snack",
+] as const;
+export type CoreFoodCategory = (typeof CORE_FOOD_CATEGORIES)[number];
+
+export const CORE_UNIT_KINDS = ["weight", "count"] as const;
+export type CoreUnitKind = (typeof CORE_UNIT_KINDS)[number];
+
+export const CORE_BUY_MODES = ["by_amount", "restock"] as const;
+export type CoreBuyMode = (typeof CORE_BUY_MODES)[number];
+
+export const CORE_COMPONENT_ROLES = ["protein", "starch", "vegetable", "fat", "other"] as const;
+export type CoreComponentRole = (typeof CORE_COMPONENT_ROLES)[number];
+
+export const EATER_KINDS = ["member", "guest"] as const;
+export type EaterKind = (typeof EATER_KINDS)[number];
+
+export const EATER_COLORS = ["a", "b", "neutral"] as const;
+export type EaterColor = (typeof EATER_COLORS)[number];
+
+export const PRICE_SOURCES = ["manual", "receipt", "seed"] as const;
+export type PriceSource = (typeof PRICE_SOURCES)[number];
+
+export const RECEIPT_STATUSES = ["processing", "ready", "failed"] as const;
+export type ReceiptStatus = (typeof RECEIPT_STATUSES)[number];

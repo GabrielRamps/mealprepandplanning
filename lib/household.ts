@@ -4,9 +4,12 @@ import { redirect } from "next/navigation";
 import { cache } from "react";
 import { getSessionUser, type SessionUser } from "@/lib/auth/server";
 import { getDb, schema } from "@/lib/db";
+import { isUniqueViolation } from "@/lib/db/errors";
 import { generateInviteCode, inviteExpiry } from "@/lib/invite-code";
 
 const { households, householdMembers } = schema;
+
+export { isUniqueViolation };
 
 export const MAX_HOUSEHOLD_MEMBERS = 6;
 
@@ -67,14 +70,6 @@ export async function getMembers(householdId: string): Promise<Member[]> {
     .where(eq(householdMembers.householdId, householdId))
     .orderBy(asc(householdMembers.joinedAt));
   return rows.map((r) => ({ ...r, role: r.role as Member["role"] }));
-}
-
-/** True for Postgres unique_violation, whether thrown directly or wrapped by Drizzle. */
-export function isUniqueViolation(err: unknown): boolean {
-  for (let e: unknown = err; e && typeof e === "object"; e = (e as { cause?: unknown }).cause) {
-    if ((e as { code?: unknown }).code === "23505") return true;
-  }
-  return false;
 }
 
 /** Runs `write` with a fresh invite code, retrying if the code is already taken. */

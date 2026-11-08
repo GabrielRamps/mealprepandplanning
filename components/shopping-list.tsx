@@ -1,6 +1,6 @@
 "use client";
 
-import { Bookmark, BookmarkCheck, Check, CheckCheck, ChevronRight, Trash2 } from "lucide-react";
+import { Bookmark, BookmarkCheck, Check, CheckCheck, ChevronRight, ExternalLink, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
@@ -11,6 +11,7 @@ import {
   toggleItemAction,
   updateItemAction,
 } from "@/app/(app)/lists/actions";
+import { updatePrepListAction } from "@/app/(app)/prep/actions";
 import { ListActionsMenu, SaveListDialog } from "@/components/list-actions";
 import { LiveSignal } from "@/components/live-signal";
 import { EmptyState, PageHeader } from "@/components/page-header";
@@ -21,8 +22,11 @@ import { Label } from "@/components/ui/label";
 import { AISLES, type Aisle } from "@/lib/enums";
 import { AISLE_LABELS } from "@/lib/grocery/aisles";
 import { groupItems, isOptionalItem } from "@/lib/grocery/build";
+import { listAsText } from "@/lib/grocery/copy-text";
 import type { ListItem } from "@/lib/grocery/lists";
 import { listsHref, tabForStatus } from "@/lib/grocery/tabs";
+import { formatMoney, formatWeight } from "@/lib/prep/format";
+import { estimatedTotal } from "@/lib/prep/list-items";
 import { formatAmount } from "@/lib/quantity";
 import { isUnitCode } from "@/lib/units";
 import { cn } from "@/lib/utils";
@@ -41,10 +45,14 @@ type Props = {
   initialItems: ListItem[];
   aisleOrder: Aisle[];
   memberNames: Record<string, string>;
+  /** The Prep week this list was made from, and whether it changed since. */
+  prepWeek?: { id: string; changed: boolean } | null;
+  /** Walmart links for Prep items, by merge key. */
+  walmartUrls?: Record<string, string>;
 };
 
 /** E2/E3: aisle groups, check-off shared between phones by polling, manual items, sources. */
-export function ShoppingList({ listId, name, status, planChanged, savedList, initialItems, aisleOrder, memberNames }: Props) {
+export function ShoppingList({ listId, name, status, planChanged, savedList, initialItems, aisleOrder, memberNames, prepWeek = null, walmartUrls = {} }: Props) {
   const [items, setItems] = useState(initialItems);
   const [openId, setOpenId] = useState<string | null>(null);
   // Deleted on the other phone: stop polling and say so.
@@ -163,7 +171,11 @@ export function ShoppingList({ listId, name, status, planChanged, savedList, ini
         title={name}
         back={back}
         action={
-          <ListActionsMenu where="list" list={{ id: listId, name, status, itemCount: items.length, savedList }} />
+          <ListActionsMenu
+            where="list"
+            list={{ id: listId, name, status, itemCount: items.length, savedList }}
+            copyText={() => listAsText(name, items, aisleOrder)}
+          />
         }
       />
       <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-4 p-4">
@@ -174,6 +186,8 @@ export function ShoppingList({ listId, name, status, planChanged, savedList, ini
         {status === "completed" ? <DoneBanner listId={listId} name={name} savedList={savedList} /> : null}
 
         {planChanged ? <PlanChangedBanner listId={listId} /> : null}
+
+        {prepWeek?.changed ? <PrepChangedBanner weekId={prepWeek.id} /> : null}
 
         <AddItem listId={listId} onAdded={apply} />
 
@@ -204,12 +218,19 @@ export function ShoppingList({ listId, name, status, planChanged, savedList, ini
                     </span>
                     <span className={cn("flex flex-col", item.isChecked && "text-muted-foreground line-through")}>
                       <span>
-                        {item.quantity !== null ? (
+                        {item.quantity !== null && item.unit === "package" && item.note ? (
+                          <span className="font-semibold">{item.quantity} × </span>
+                        ) : item.quantity !== null ? (
                           <span className="font-semibold">{formatAmount(item.quantity, null, item.unit)} </span>
                         ) : null}
                         <span data-testid="item-name">{item.name}</span>
                         {isOptionalItem(item.sources) ? <span className="text-muted-foreground"> (optional)</span> : null}
                       </span>
+                      {item.note || item.priceCents !== null ? (
+                        <span className="text-xs text-muted-foreground" data-testid="item-note">
+                          {[item.note, item.priceCents !== null ? formatMoney(item.priceCents) : null].filter(Boolean).join(" · ")}
+                        </span>
+                      ) : null}
                       {item.isChecked && item.checkedBy && memberNames[item.checkedBy] ? (
                         <span className="text-xs no-underline">Got it: {memberNames[item.checkedBy]}</span>
                       ) : null}
@@ -228,11 +249,14 @@ export function ShoppingList({ listId, name, status, planChanged, savedList, ini
             </ul>
           </section>
         ))}
+
+        <TotalFooter items={items} />
       </main>
 
       <ItemDialog
         listId={listId}
         item={open}
+        walmartUrl={open?.mergeKey ? (walmartUrls[open.mergeKey] ?? null) : null}
         memberNames={memberNames}
         onClose={() => setOpenId(null)}
         onEdit={edit}
@@ -306,6 +330,45 @@ function PlanChangedBanner({ listId }: { listId: string }) {
   );
 }
 
+/** P-8: the Prep week behind this list changed since it was made. */
+function PrepChangedBanner({ weekId }: { weekId: string }) {
+  const router = useRouter();
+  const [error, setError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+  return (
+    <div role="status" className="flex flex-col gap-2 rounded-xl bg-amber-500/10 p-3 text-sm">
+      <p>
+        <strong>Week changed.</strong> Update the list? Checked items and items you added stay.
+      </p>
+      <Button
+        disabled={pending}
+        onClick={() =>
+          startTransition(async () => {
+            const result = await updatePrepListAction(weekId);
+            if (result.error) setError(result.error);
+            else router.refresh();
+          })
+        }
+      >
+        {pending ? "Updating…" : "Update list"}
+      </Button>
+      {error ? <p className="text-destructive">{error}</p> : null}
+    </div>
+  );
+}
+
+/** "Estimated total $X (Y items not priced)" when any item has a price (P-8). */
+function TotalFooter({ items }: { items: ListItem[] }) {
+  const total = estimatedTotal(items);
+  if (!total) return null;
+  return (
+    <p className="rounded-xl bg-muted p-3 text-sm" data-testid="list-total">
+      Estimated total <strong className="tabular-nums">{formatMoney(total.cents)}</strong>
+      {total.unpriced ? ` (${total.unpriced} item${total.unpriced === 1 ? "" : "s"} not priced)` : ""}
+    </p>
+  );
+}
+
 /** Keeps the phone awake while shopping (PRD 5), where the browser allows it. */
 function useWakeLock(enabled: boolean) {
   useEffect(() => {
@@ -370,6 +433,7 @@ function AddItem({ listId, onAdded }: { listId: string; onAdded: (item: ListItem
 function ItemDialog({
   listId,
   item,
+  walmartUrl,
   memberNames,
   onClose,
   onEdit,
@@ -377,6 +441,7 @@ function ItemDialog({
 }: {
   listId: string;
   item: ListItem | null;
+  walmartUrl: string | null;
   memberNames: Record<string, string>;
   onClose: () => void;
   onEdit: (item: ListItem, patch: { aisle?: Aisle; isPantry?: boolean }) => void;
@@ -404,11 +469,22 @@ function ItemDialog({
           <>
             <DialogHeader>
               <DialogTitle>
-                {item.quantity !== null ? `${formatAmount(item.quantity, null, item.unit)} ` : ""}
+                {item.quantity !== null && item.unit === "package" && item.note
+                  ? `${item.quantity} × `
+                  : item.quantity !== null
+                    ? `${formatAmount(item.quantity, null, item.unit)} `
+                    : ""}
                 {item.name}
               </DialogTitle>
               <DialogDescription>
-                {item.isManual ? "Added by hand." : `Needed by ${item.sources.length} recipe${item.sources.length === 1 ? "" : "s"}.`}
+                {item.note ? `${item.note}${item.priceCents !== null ? ` · ${formatMoney(item.priceCents)}` : ""}. ` : ""}
+                {item.isManual
+                  ? "Added by hand."
+                  : item.sources.length === 0
+                    ? ""
+                    : item.sources.some((s) => s.kind === "prep")
+                      ? `Needed by ${item.sources.length} meal${item.sources.length === 1 ? "" : "s"} this week.`
+                      : `Needed by ${item.sources.length} recipe${item.sources.length === 1 ? "" : "s"}.`}
                 {item.isChecked && item.checkedBy && memberNames[item.checkedBy] ? ` Checked off by ${memberNames[item.checkedBy]}.` : ""}
               </DialogDescription>
             </DialogHeader>
@@ -417,16 +493,32 @@ function ItemDialog({
               <ul className="flex flex-col divide-y rounded-lg border text-sm" aria-label="Recipes that need it">
                 {item.sources.map((s, i) => (
                   <li key={i} className="flex justify-between gap-3 px-3 py-2">
-                    <Link href={`/recipes/${s.recipe_id}`} className="font-medium underline-offset-2 hover:underline">
-                      {s.recipe_title}
-                    </Link>
+                    {s.kind === "prep" || !s.recipe_id ? (
+                      <span className="font-medium">{s.recipe_title}</span>
+                    ) : (
+                      <Link href={`/recipes/${s.recipe_id}`} className="font-medium underline-offset-2 hover:underline">
+                        {s.recipe_title}
+                      </Link>
+                    )}
                     <span className="text-right text-muted-foreground">
-                      {s.quantity !== null ? formatAmount(s.quantity, null, isUnitCode(s.unit) ? s.unit : null) : "as needed"}
+                      {s.quantity === null
+                        ? "as needed"
+                        : (s.kind === "prep" || (s.unit === "g" && !s.raw_text))
+                          ? formatWeight(s.quantity)
+                          : formatAmount(s.quantity, null, isUnitCode(s.unit) ? s.unit : null)}
                       {s.optional ? " (optional)" : ""}
                     </span>
                   </li>
                 ))}
               </ul>
+            ) : null}
+
+            {walmartUrl ? (
+              <Button asChild variant="outline">
+                <a href={walmartUrl} target="_blank" rel="noopener noreferrer">
+                  <ExternalLink aria-hidden /> Open in Walmart
+                </a>
+              </Button>
             ) : null}
 
             <div className="flex flex-col gap-1.5">

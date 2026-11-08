@@ -2,6 +2,7 @@ import { Clock, ExternalLink } from "lucide-react";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { PageHeader } from "@/components/page-header";
+import { AddToPrepWeek } from "@/components/prep/add-to-prep";
 import { formatMinutes } from "@/components/recipe-card";
 import {
   FavoriteButton,
@@ -121,6 +122,8 @@ export default async function RecipePage(props: PageProps<"/recipes/[id]">) {
           ))}
           <FavoriteButton recipeId={recipe.id} isFavorite={mine?.isFavorite ?? false} />
         </section>
+
+        {recipe.status === "active" ? <AddToPrepWeek recipeId={recipe.id} /> : null}
 
         <ScaledIngredients servings={recipe.servings} ingredients={recipe.ingredients} />
 

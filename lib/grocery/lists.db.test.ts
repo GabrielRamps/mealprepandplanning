@@ -81,7 +81,7 @@ describe.skipIf(!url)("grocery lists (database)", async () => {
       { recipeId: tacos, title: "Chicken tacos", servings: 8, available: true },
       { recipeId: pasta, title: "Pasta bake", servings: 2, available: true },
     ]);
-    expect(all[0].items).toEqual([{ name: "paper towels", quantity: 2, unit: null, aisle: "household", isPantry: false }]);
+    expect(all[0].items).toEqual([{ name: "paper towels", quantity: 2, unit: null, aisle: "household", isPantry: false, note: null, priceCents: null }]);
 
     const detail = await lists.getList(householdId, firstListId);
     expect(detail?.savedList).toEqual({ id: savedId, name: "Taco week" });

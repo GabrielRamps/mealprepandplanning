@@ -51,6 +51,13 @@ Settings → **Your store** sets the aisle order; **Ingredient aisles and pantry
 staples** sets each ingredient's aisle and whether it goes in the "Check you
 have" group.
 
+## Prep (milestones 7–9)
+
+Spec: [docs/PRD-prep.md](docs/PRD-prep.md). The Prep tab's first screen
+offers **Load our plan**, which seeds the household's foods, meals,
+portions, targets and the 4-week rotation in one go. Receipt scans need
+`ANTHROPIC_API_KEY` and the `imports` bucket, like photo imports.
+
 ## Scripts
 
 | Script | What it does |
@@ -71,8 +78,9 @@ own Neon branch, copied from production when the branch is first deployed.
 
 ## Tests
 
-`npm test` runs the unit tests. `lib/grocery/lists.db.test.ts` also exercises
-lists, saved lists and deletes against a real database, and only runs with
+`npm test` runs the unit tests. `lib/grocery/lists.db.test.ts` and
+`lib/prep/prep.db.test.ts` also exercise lists, saved lists, deletes and Prep
+against a real database, and only run with
 `TEST_DATABASE_URL` set to a throwaway database with migrations applied (a
 schema-only Neon branch works; never production):
 

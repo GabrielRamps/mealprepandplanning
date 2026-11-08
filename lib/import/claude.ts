@@ -2,6 +2,14 @@ import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { AiRecipe, checkAiOutput, EXTRACTION_PROMPT, retryNote, type StoredDraft } from "@/lib/import/ai";
+import {
+  checkReceiptOutput,
+  type FoodForMatch,
+  foodList,
+  RECEIPT_PROMPT,
+  ReceiptOutput,
+  retryNote as receiptRetryNote,
+} from "@/lib/import/receipt-ai";
 
 // Websites, screenshots, recipe-card photos and pasted text go to Claude
 // (PRD 3, 7.3). Model from ANTHROPIC_MODEL, default Claude Haiku 5.5.
@@ -76,4 +84,50 @@ export async function readWithClaude(source: ClaudeSource, jobId: string): Promi
     messages.push({ role: "assistant", content: response.content }, { role: "user", content: retryNote(checked.problems) });
   }
   throw new ReadError("Couldn't read this recipe.");
+}
+
+/**
+ * Receipt scan (PRD-prep 10): the household's core foods go in the message so
+ * lines can be matched; the answer is checked (ids too) and retried once.
+ */
+export async function readReceiptWithClaude(
+  images: { data: string; mediaType: "image/jpeg" | "image/png" | "image/webp" }[],
+  foods: FoodForMatch[],
+  scanId: string,
+): Promise<{ output: ReceiptOutput; model: string }> {
+  const model = claudeModel();
+  const messages: Anthropic.MessageParam[] = [
+    {
+      role: "user",
+      content: [
+        ...images.map(
+          (img): Anthropic.ImageBlockParam => ({ type: "image", source: { type: "base64", media_type: img.mediaType, data: img.data } }),
+        ),
+        {
+          type: "text",
+          text: `${images.length === 1 ? "This image is" : `These ${images.length} images are`} one grocery receipt or cart. Our core foods (id | name | walmart_name | package_label):\n${foodList(foods)}`,
+        },
+      ],
+    },
+  ];
+  const ids = new Set(foods.map((f) => f.id));
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    const started = Date.now();
+    const response = await anthropic().messages.parse({
+      model,
+      max_tokens: 16000,
+      system: RECEIPT_PROMPT,
+      messages,
+      output_config: { format: zodOutputFormat(ReceiptOutput) },
+    });
+    console.info(`[receipt ${scanId}] claude ${model} attempt ${attempt}: ${response.stop_reason} in ${Date.now() - started} ms`);
+    if (response.stop_reason === "refusal") throw new ReadError("Couldn't read that receipt — try a clearer photo.");
+    const checked = response.parsed_output
+      ? checkReceiptOutput(response.parsed_output, ids)
+      : { ok: false as const, problems: "The answer wasn't valid JSON for the schema." };
+    if (checked.ok) return { output: checked.output, model };
+    console.warn(`[receipt ${scanId}] output failed validation: ${checked.problems}`);
+    messages.push({ role: "assistant", content: response.content }, { role: "user", content: receiptRetryNote(checked.problems) });
+  }
+  throw new ReadError("Couldn't read that receipt — try a clearer photo.");
 }
