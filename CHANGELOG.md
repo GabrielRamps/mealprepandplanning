@@ -58,8 +58,9 @@ Migration `drizzle/0002_prep.sql`, additive only:
   `grocery_lists.prep_week_id`, `saved_list_items.note`,
   `saved_list_items.price_cents`.
 
-**Not yet applied to production.** Run `npm run db:migrate` against
-production before merging (README → Migrations and deploys).
+**Applied to production on 2026-11-08**, before the code shipped, so the live
+app kept working throughout. Preview branches copied from production before
+then need it applied too.
 
 ### Vercel
 
