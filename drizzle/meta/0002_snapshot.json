@@ -1,5 +1,5 @@
 {
-  "id": "8231e9a5-e523-4bff-9aa1-2eaef7a1be98",
+  "id": "60e3c766-2a01-43df-b918-66648c97c100",
   "prevId": "5cdb0d19-e0df-4732-8b7e-bf182b19519d",
   "version": "7",
   "dialect": "postgresql",
@@ -487,7 +487,7 @@
           "columnsTo": [
             "id"
           ],
-          "onDelete": "restrict",
+          "onDelete": "cascade",
           "onUpdate": "no action"
         }
       },
@@ -2627,7 +2627,7 @@
           "columnsTo": [
             "id"
           ],
-          "onDelete": "restrict",
+          "onDelete": "cascade",
           "onUpdate": "no action"
         },
         "prep_week_meals_recipe_id_recipes_id_fk": {

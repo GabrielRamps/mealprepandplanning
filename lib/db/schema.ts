@@ -614,7 +614,9 @@ export const coreMealComponents = pgTable("core_meal_components", {
   swapCategory: coreFoodCategory("swap_category"), // set = swappable
   defaultFoodId: uuid("default_food_id")
     .notNull()
-    .references(() => coreFoods.id, { onDelete: "restrict" }),
+    // Foods are only soft-deleted (with a guard, P-2); a hard delete comes
+    // from deleting the household, which must cascade through meals and foods.
+    .references(() => coreFoods.id, { onDelete: "cascade" }),
   prepAs: text("prep_as"),
   position: integer("position").notNull().default(0),
 });
@@ -717,7 +719,7 @@ export const prepWeekMeals = pgTable(
       .references(() => prepWeeks.id, { onDelete: "cascade" }),
     day: date("day", { mode: "string" }).notNull(), // within the week (enforced in app)
     slot: mealSlot("slot").notNull(),
-    coreMealId: uuid("core_meal_id").references(() => coreMeals.id, { onDelete: "restrict" }),
+    coreMealId: uuid("core_meal_id").references(() => coreMeals.id, { onDelete: "cascade" }), // meals are soft-deleted; see core_meal_components
     recipeId: uuid("recipe_id").references(() => recipes.id, { onDelete: "set null" }),
     servings: num("servings", 6, 2),
     leftoverOf: uuid("leftover_of").references((): AnyPgColumn => prepWeekMeals.id, { onDelete: "set null" }),

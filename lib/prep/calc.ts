@@ -192,13 +192,13 @@ export function shoppingNeeds(input: WeekInput): FoodNeed[] {
       }
       continue;
     }
-    const label = mealLabel(input, wm);
+    const label = `${mealLabel(input, wm)}${wm.isDouble ? " (double)" : ""}`;
     for (const eater of eatersOf(input, wm)) {
       for (const line of portionsFor(input, wm, eater.id)) add(line.food, line.grams, wm, label);
     }
     if (wm.isDouble) {
       for (const member of leftoverEaters(input)) {
-        for (const line of portionsFor(input, wm, member.id)) add(line.food, line.grams, wm, `${label} (double)`);
+        for (const line of portionsFor(input, wm, member.id)) add(line.food, line.grams, wm, label);
       }
     }
   }
@@ -238,6 +238,17 @@ export function shoppingNeeds(input: WeekInput): FoodNeed[] {
 // ---------------------------------------------------------------------------
 // 8.5 Library recipes
 
+/** Grams of a core food a recipe ingredient stands for, or null when it can't be matched or weighed. */
+export function matchedGrams(ing: BuildRecipe["ingredients"][number], factor: number, foodByIngredient: Map<string, Food>): { food: Food; grams: number } | null {
+  const amount = ing.quantityMax ?? ing.quantity;
+  const food = ing.ingredientId ? foodByIngredient.get(ing.ingredientId) : undefined;
+  if (!food || amount === null) return null;
+  let grams: number | null = null;
+  if (ing.unit && unitFamily(ing.unit) === "weight") grams = amount * factor * UNIT_FACTOR[ing.unit]!;
+  else if (!ing.unit && food.unitKind === "count") grams = amount * factor * (food.gramsPerCount ?? 0);
+  return grams !== null && grams > 0 ? { food, grams } : null;
+}
+
 /**
  * A recipe's ingredients at some servings, matched to core foods by
  * ingredient: weights convert to grams, plain counts use grams per count.
@@ -248,15 +259,9 @@ export function recipeUse(recipe: BuildRecipe, servings: number, foodByIngredien
   const foods: RecipeUse["foods"] = [];
   let unpriced = 0;
   for (const ing of recipe.ingredients) {
-    const amount = ing.quantityMax ?? ing.quantity;
-    const food = ing.ingredientId ? foodByIngredient.get(ing.ingredientId) : undefined;
-    let grams: number | null = null;
-    if (food && amount !== null) {
-      if (ing.unit && unitFamily(ing.unit) === "weight") grams = amount * factor * UNIT_FACTOR[ing.unit]!;
-      else if (!ing.unit && food.unitKind === "count") grams = amount * factor * (food.gramsPerCount ?? 0);
-    }
-    if (food && grams !== null && grams > 0) foods.push({ foodId: food.id, grams });
-    else if (amount !== null && !ing.isOptional) unpriced++;
+    const m = matchedGrams(ing, factor, foodByIngredient);
+    if (m) foods.push({ foodId: m.food.id, grams: m.grams });
+    else if ((ing.quantityMax ?? ing.quantity) !== null && !ing.isOptional) unpriced++;
   }
   return { title: recipe.title, foods, unpriced };
 }

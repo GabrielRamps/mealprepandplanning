@@ -22,6 +22,10 @@ export type ListItem = {
   isChecked: boolean;
   checkedBy: string | null;
   sources: ItemSource[];
+  /** Prep items: '3 lb family pack · $11.97 each'. */
+  note: string | null;
+  /** Line total in cents, when known. */
+  priceCents: number | null;
   updatedAt: string; // ISO; newer wins when polling
 };
 
@@ -40,6 +44,8 @@ function toItem(row: ItemRow): ListItem {
     isChecked: row.isChecked,
     checkedBy: row.checkedBy,
     sources: row.sources as ItemSource[],
+    note: row.note,
+    priceCents: row.priceCents,
     updatedAt: row.updatedAt.toISOString(),
   };
 }
@@ -48,7 +54,7 @@ function toItem(row: ItemRow): ListItem {
 // Building
 
 /** Recipes in this household (not deleted) with what buildList needs. */
-async function recipesForBuild(householdId: string, recipeIds: string[]): Promise<Map<string, BuildRecipe>> {
+export async function recipesForBuild(householdId: string, recipeIds: string[]): Promise<Map<string, BuildRecipe>> {
   const db = getDb();
   const ids = [...new Set(recipeIds)].filter(isUuid);
   if (ids.length === 0) return new Map();
@@ -127,6 +133,8 @@ export type ExtraItem = {
   unit: string | null;
   aisle: Aisle;
   isPantry: boolean;
+  note?: string | null;
+  priceCents?: number | null;
 };
 
 /**
@@ -190,6 +198,8 @@ export async function createList(input: {
               unit: isUnitCode(e.unit) ? e.unit : null,
               aisle: e.aisle,
               isPantry: e.isPantry,
+              note: e.note ?? null,
+              priceCents: e.priceCents ?? null,
               isManual: true,
               position: 10_000 + i,
             })),
@@ -271,6 +281,7 @@ export type ListDetail = {
   name: string;
   status: ListStatus;
   mealPlanId: string | null;
+  prepWeekId: string | null;
   savedList: { id: string; name: string } | null;
   aisleOrder: Aisle[];
   items: ListItem[];
@@ -287,6 +298,7 @@ export async function getList(householdId: string, listId: string): Promise<List
         name: groceryLists.name,
         status: groceryLists.status,
         mealPlanId: groceryLists.mealPlanId,
+        prepWeekId: groceryLists.prepWeekId,
         savedListId: schema.savedLists.id,
         savedListName: schema.savedLists.name,
         aisleOrder: households.aisleOrder,

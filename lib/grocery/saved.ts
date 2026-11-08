@@ -15,7 +15,15 @@ const { savedLists, savedListRecipes, savedListItems, groceryLists, groceryListR
 export class SavedListError extends Error {}
 
 export type SavedRecipe = { recipeId: string; title: string; servings: number; available: boolean };
-export type SavedItem = { name: string; quantity: number | null; unit: UnitCode | null; aisle: Aisle; isPantry: boolean };
+export type SavedItem = {
+  name: string;
+  quantity: number | null;
+  unit: UnitCode | null;
+  aisle: Aisle;
+  isPantry: boolean;
+  note: string | null;
+  priceCents: number | null;
+};
 
 export type SavedList = {
   id: string;
@@ -79,6 +87,8 @@ async function loadSaved(householdId: string, savedListId: string | null): Promi
       unit: isUnitCode(i.unit) ? i.unit : null,
       aisle: i.aisle,
       isPantry: i.isPantry,
+      note: i.note,
+      priceCents: i.priceCents,
     });
   }
   return [...byId.values()];
@@ -122,13 +132,13 @@ export async function saveListAs(input: {
 }): Promise<string> {
   const db = getDb();
   const [list] = await db
-    .select({ id: groceryLists.id, savedListId: groceryLists.savedListId })
+    .select({ id: groceryLists.id, savedListId: groceryLists.savedListId, prepWeekId: groceryLists.prepWeekId })
     .from(groceryLists)
     .where(and(eq(groceryLists.id, input.listId), eq(groceryLists.householdId, input.householdId)))
     .limit(1);
   if (!list) throw new SavedListError("That list was deleted.");
 
-  const [recipeRows, itemRows] = await Promise.all([
+  const [listRecipeRows, itemRows] = await Promise.all([
     db
       .select({ recipeId: groceryListRecipes.recipeId, servings: groceryListRecipes.servings })
       .from(groceryListRecipes)
@@ -144,11 +154,16 @@ export async function saveListAs(input: {
         unit: groceryItems.unit,
         aisle: groceryItems.aisle,
         isPantry: groceryItems.isPantry,
+        note: groceryItems.note,
+        priceCents: groceryItems.priceCents,
       })
       .from(groceryItems)
-      .where(and(eq(groceryItems.listId, list.id), eq(groceryItems.isManual, true)))
+      // A Prep list's items (packages, extras) all save as hand-added items.
+      .where(and(eq(groceryItems.listId, list.id), list.prepWeekId ? undefined : eq(groceryItems.isManual, true)))
       .orderBy(asc(groceryItems.position), asc(groceryItems.name)),
   ]);
+  // A Prep list's recipe ingredients are already among its items.
+  const recipeRows = list.prepWeekId ? [] : listRecipeRows;
   if (recipeRows.length === 0 && itemRows.length === 0) {
     throw new SavedListError("Nothing to save yet. Add recipes or items to the list first.");
   }
